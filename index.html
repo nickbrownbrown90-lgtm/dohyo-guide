@@ -26,7 +26,7 @@
               <span class="brand-en">Dohyō Guide</span>
             </h1>
             <div class="brand-subtitle">
-              <span class="live-basho-pill" id="active-basho-pill">★ 九州場所 • Day 8 (Nakabi 中日)</span>
+              <span class="live-basho-pill" id="active-basho-pill">★ Fukuoka • 2026-11-16 • Day 9 (九日目)</span>
               <span class="lang-en-only">Grand Sumo Arena Companion</span>
               <span class="lang-jp-only">大相撲観戦・四股名漢字解説</span>
             </div>
@@ -99,7 +99,7 @@
           </div>
           <div class="api-status-badge" id="api-status-badge">
             <span class="status-dot" id="api-status-dot"></span>
-            <span id="api-status-text">Curated Nakabi Dataset Ready + Live API Sync</span>
+            <span id="api-status-text">2026-11-16 Kyushu Day 9 Ready + Live API Sync</span>
           </div>
         </div>
       </div>
@@ -117,9 +117,12 @@
               type="search"
               id="torikumi-search"
               class="search-input"
-              placeholder="Search bout (e.g. Hoshoryu, 豊昇龍, Ura, Oshi)..."
+              placeholder="Search bout (e.g. Onosato, 豊昇龍, Ura, Oshi)..."
               aria-label="Search bouts by wrestler name, kanji, or style"
             />
+            <button type="button" class="action-btn" id="bout-order-toggle-btn" title="Flip match order between Last Match First and Last Match at Bottom">
+              ⬇ Last Match First (結びから)
+            </button>
             <button type="button" class="action-btn" id="sync-live-api-btn" title="Fetch live results from sumo-api.com with automatic offline fallback">
               🔄 Sync Live API
             </button>
@@ -134,12 +137,12 @@
           <div class="filter-pills" id="torikumi-filter-pills">
             <button type="button" class="filter-pill active" data-filter="all">All Bouts 全取組</button>
             <button type="button" class="filter-pill" data-filter="sanyaku">San'yaku Featured 三役・上位</button>
-            <button type="button" class="filter-pill" data-filter="stakes">Unbeaten / Kachi-koshi 勝ち越し・全勝</button>
+            <button type="button" class="filter-pill" data-filter="stakes">Title Race / 7-1 Leaders 優勝争い</button>
             <button type="button" class="filter-pill" data-filter="kyushu">Kyushu / Local Heroes ご当地・九州</button>
             <button type="button" class="filter-pill" data-filter="starred">★ My Watchlist (<span id="watchlist-count">0</span>)</button>
           </div>
           <div style="font-size:0.74rem; color:var(--text-muted);" id="bout-count-summary">
-            Showing 16 featured Makuuchi bouts
+            Showing 21 Makuuchi bouts (2026-11-16 • Day 9)
           </div>
         </div>
       </div>

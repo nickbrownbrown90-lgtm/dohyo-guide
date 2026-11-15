@@ -13,7 +13,8 @@
     langMode: localStorage.getItem("dohyo_lang") || "dual",
     theme: localStorage.getItem("dohyo_theme") || "washi",
     selectedBashoId: "202611",
-    selectedDay: 8, // Defaults to Day 8 (Nakabi / Nov 15)
+    selectedDay: 9, // Defaults to Day 9 (2026-11-16 JST)
+    boutOrder: localStorage.getItem("dohyo_bout_order") || "desc", // "desc" = Last Match First, "asc" = Last Match at Bottom
     torikumiFilter: "all",
     torikumiSearch: "",
     rikishiRankFilter: "all",
@@ -28,14 +29,20 @@
 
   // Lookup Maps
   const rikishiById = new Map();
+  const rikishiByApiId = new Map();
   const rikishiByKanji = new Map();
   const rikishiByRomaji = new Map();
 
-  DATA.rikishi.forEach((r) => {
+  function registerRikishi(r) {
     rikishiById.set(r.id, r);
-    rikishiByKanji.set(r.shikonaKanji, r);
-    rikishiByRomaji.set(r.romaji.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), r);
-  });
+    if (r.apiId) rikishiByApiId.set(r.apiId, r);
+    if (r.shikonaKanji) rikishiByKanji.set(r.shikonaKanji, r);
+    if (r.romaji) {
+      rikishiByRomaji.set(r.romaji.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), r);
+    }
+  }
+
+  DATA.rikishi.forEach(registerRikishi);
 
   const kimariteById = new Map();
   DATA.kimarite.forEach((k) => kimariteById.set(k.id, k));
@@ -46,11 +53,24 @@
   function init() {
     applyTheme(state.theme);
     applyLanguageMode(state.langMode);
+    updateBoutOrderButton();
     initBashoSelector();
     initDayStrip();
     generateScheduleForDay(state.selectedDay);
     bindEvents();
     renderAll();
+    // Auto-sync live results from sumo-api.com in background
+    syncWithLiveSumoApi();
+  }
+
+  function updateBoutOrderButton() {
+    const btn = document.getElementById("bout-order-toggle-btn");
+    if (!btn) return;
+    if (state.boutOrder === "asc") {
+      btn.textContent = "⬆ Last Match at Bottom (序盤から)";
+    } else {
+      btn.textContent = "⬇ Last Match First (結びから)";
+    }
   }
 
   /* ========================================================================
@@ -115,12 +135,20 @@
       .join("");
   }
 
+  function getDayDateStr(basho, dayNum) {
+    if (!basho || !basho.startDate) return "";
+    const parts = basho.startDate.split("-").map(Number);
+    const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + (dayNum - 1)));
+    return dt.toISOString().slice(0, 10);
+  }
+
   function updateHeaderBashoPill() {
     const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
-    const dayObj = DATA.days.find((d) => d.day === state.selectedDay) || DATA.days[7];
+    const dayObj = DATA.days.find((d) => d.day === state.selectedDay) || DATA.days[8];
+    const dateStr = getDayDateStr(basho, dayObj.day);
     const pill = document.getElementById("active-basho-pill");
     if (pill) {
-      pill.textContent = `★ ${basho.city} • Day ${dayObj.day} (${dayObj.labelJp})`;
+      pill.textContent = `★ ${basho.city} • ${dateStr} • Day ${dayObj.day} (${dayObj.labelJp})`;
     }
   }
 
@@ -130,8 +158,8 @@
   function generateScheduleForDay(dayNum) {
     updateHeaderBashoPill();
 
-    // Day 8 uses our deeply hand-crafted Nakabi card directly
-    if (dayNum === 8) {
+    // Kyushu 2026 Day 9 (2026-11-16) uses our curated card directly
+    if (state.selectedBashoId === "202611" && dayNum === 9) {
       state.boutsForCurrentSelection = DATA.defaultTorikumi.map((b) => ({ ...b }));
       return;
     }
@@ -209,17 +237,64 @@
   /* ========================================================================
      Live sumo-api.com Sync with Instant Offline Fallback
      ======================================================================== */
+  function resolveOrCreateRikishi(apiId, shikonaRaw, rankRaw, side) {
+    if (apiId && rikishiByApiId.has(apiId)) return rikishiByApiId.get(apiId);
+    const norm = (shikonaRaw || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (norm && rikishiByRomaji.has(norm)) return rikishiByRomaji.get(norm);
+
+    const slug = (norm || `rikishi-${apiId || Math.random()}`).replace(/[^a-z0-9]/g, "");
+    const dynamicProfile = {
+      id: slug,
+      apiId: apiId || 0,
+      shikonaKanji: shikonaRaw || "力士",
+      furigana: shikonaRaw || "",
+      rubyHtml: shikonaRaw || "力士",
+      romaji: shikonaRaw || "Rikishi",
+      givenName: "",
+      rankEn: rankRaw || "Makuuchi",
+      rankJp: rankRaw || "幕内",
+      rankTier: "Maegashira",
+      side: side || "East",
+      heyaEn: "JSA",
+      heyaJp: "日本相撲協会",
+      originEn: "Grand Sumo",
+      originJp: "大相撲",
+      heightCm: 185,
+      weightKg: 150,
+      styleCode: "Makuuchi",
+      styleEn: "Grand Sumo top-division competitor",
+      styleJp: "幕内力士",
+      signatureMoves: ["Yorikiri", "Oshidashi"],
+      makuuchiYusho: 0,
+      sansho: "Active",
+      kinboshi: 0,
+      careerRecord: "Live API",
+      currentRecord: "Live",
+      literalMeaningEn: shikonaRaw || "Rikishi",
+      literalMeaningJp: shikonaRaw || "力士",
+      kanjiBreakdown: [],
+      storyEn: `${shikonaRaw} (${rankRaw}) competing in Grand Sumo.`,
+      storyJp: `${shikonaRaw}（${rankRaw}）の取組。`
+    };
+    registerRikishi(dynamicProfile);
+    return dynamicProfile;
+  }
+
   async function syncWithLiveSumoApi() {
     const dot = document.getElementById("api-status-dot");
     const text = document.getElementById("api-status-text");
     const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
+    const dateStr = getDayDateStr(basho, state.selectedDay);
 
     dot.classList.add("syncing");
-    text.textContent = `Syncing sumo-api.com (${basho.apiId} Day ${state.selectedDay})...`;
+    text.textContent = `Syncing sumo-api.com (${dateStr} • Day ${state.selectedDay})...`;
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4500);
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const url = `https://sumo-api.com/api/basho/${basho.apiId}/torikumi/Makuuchi/${state.selectedDay}`;
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timeout);
@@ -228,55 +303,58 @@
       const json = await res.json();
 
       if (json && Array.isArray(json.torikumi) && json.torikumi.length > 0) {
-        const mapped = json.torikumi
-          .slice()
-          .reverse()
-          .map((item, idx) => {
-            const eastRaw = item.eastShikona || "East Rikishi";
-            const westRaw = item.westShikona || "West Rikishi";
-            const eastNorm = eastRaw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const westNorm = westRaw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const curatedByBoutNo = new Map();
+        if (state.selectedBashoId === "202611" && state.selectedDay === 9) {
+          DATA.defaultTorikumi.forEach((b) => curatedByBoutNo.set(b.boutNo, b));
+        }
 
-            const eastMatch = rikishiByRomaji.get(eastNorm) || DATA.rikishi[idx % DATA.rikishi.length];
-            const westMatch =
-              rikishiByRomaji.get(westNorm) || DATA.rikishi[(idx + 7) % DATA.rikishi.length];
+        const mapped = json.torikumi.map((item, idx) => {
+          const bno = item.matchNo || item.boutNo || idx + 1;
+          const curated = curatedByBoutNo.get(bno);
+          const eastMatch = resolveOrCreateRikishi(item.eastId, item.eastShikona, item.eastRank, "East");
+          const westMatch = resolveOrCreateRikishi(item.westId, item.westShikona, item.westRank, "West");
 
-            return {
-              boutNo: item.boutNo || json.torikumi.length - idx,
-              boutTitleEn: `Live API Bout #${item.boutNo || json.torikumi.length - idx}: ${eastRaw} vs. ${westRaw}`,
-              boutTitleJp: `公式APIデータ：${eastMatch.shikonaKanji} vs ${westMatch.shikonaKanji}`,
-              approxTime: "Live Record",
-              isSanyaku: idx < 6,
-              stakesTagEn: `${item.eastRank || eastMatch.rankEn} vs. ${item.westRank || westMatch.rankEn}`,
-              stakesTagJp: `${eastMatch.rankJp} vs ${westMatch.rankJp}`,
-              eastId: eastMatch.id,
-              westId: westMatch.id,
-              h2hEast: 3,
-              h2hWest: 3,
-              lastMeetingEn: item.kimarite ? `Decided by ${item.kimarite}` : "Scheduled matchup",
-              lastMeetingJp: item.kimarite ? `決まり手：${item.kimarite}` : "取組予定",
-              winnerSide:
-                item.winnerId && item.winnerId === item.eastId
-                  ? "East"
-                  : item.winnerId && item.winnerId === item.westId
-                  ? "West"
-                  : null,
-              kimariteId: (item.kimarite || "yorikiri").toLowerCase(),
-              storylineEn: `${eastMatch.romaji} (${eastMatch.styleCode}) meets ${westMatch.romaji} (${westMatch.styleCode}). ${eastMatch.storyEn}`,
-              storylineJp: `${eastMatch.shikonaKanji}と${westMatch.shikonaKanji}の対戦。${eastMatch.storyJp}`
-            };
-          });
+          const totalMins = 16 * 60 + 15 + (bno - 1) * 5;
+          const approxTime = `${Math.floor(totalMins / 60)}:${String(totalMins % 60).padStart(2, "0")}`;
+
+          const winnerSide =
+            item.winnerId && item.winnerId === item.eastId
+              ? "East"
+              : item.winnerId && item.winnerId === item.westId
+              ? "West"
+              : null;
+
+          return {
+            boutNo: bno,
+            boutTitleEn: curated ? curated.boutTitleEn : `Bout #${bno}: ${eastMatch.romaji} vs. ${westMatch.romaji}`,
+            boutTitleJp: curated ? curated.boutTitleJp : `幕内第${bno}番：${eastMatch.shikonaKanji} vs ${westMatch.shikonaKanji}`,
+            approxTime: curated ? curated.approxTime : approxTime,
+            isSanyaku: curated ? curated.isSanyaku : bno >= 15,
+            stakesTagEn: curated ? curated.stakesTagEn : `${item.eastRank || eastMatch.rankEn} vs. ${item.westRank || westMatch.rankEn}`,
+            stakesTagJp: curated ? curated.stakesTagJp : `${eastMatch.rankJp} vs ${westMatch.rankJp}`,
+            eastId: eastMatch.id,
+            westId: westMatch.id,
+            h2hEast: curated ? curated.h2hEast : 3,
+            h2hWest: curated ? curated.h2hWest : 2,
+            lastMeetingEn: item.kimarite ? `Result: ${item.kimarite}` : curated ? curated.lastMeetingEn : `${dateStr} • Day ${state.selectedDay}`,
+            lastMeetingJp: item.kimarite ? `決まり手：${item.kimarite}` : curated ? curated.lastMeetingJp : `${dateStr}（${state.selectedDay}日目）`,
+            winnerSide,
+            kimariteId: item.kimarite ? item.kimarite.toLowerCase() : null,
+            storylineEn: curated ? curated.storylineEn : `${eastMatch.romaji} (${eastMatch.styleCode}) meets ${westMatch.romaji} (${westMatch.styleCode}) on Day ${state.selectedDay}.`,
+            storylineJp: curated ? curated.storylineJp : `${eastMatch.shikonaKanji}と${westMatch.shikonaKanji}の対戦。`
+          };
+        });
 
         state.boutsForCurrentSelection = mapped;
         dot.classList.remove("syncing");
-        text.textContent = `Live API Synced (${mapped.length} Makuuchi Bouts)`;
+        text.textContent = `Live API Synced • ${dateStr} (${mapped.length} Makuuchi Bouts)`;
         renderTorikumiList();
         return;
       }
       throw new Error("Empty torikumi payload");
     } catch (err) {
       dot.classList.remove("syncing");
-      text.textContent = `Offline-First Curated Dataset Active (Day ${state.selectedDay})`;
+      text.textContent = `Offline-First Curated Dataset Active (${dateStr} • Day ${state.selectedDay})`;
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
     }
@@ -289,63 +367,69 @@
     const container = document.getElementById("bout-list-container");
     const watchlistCountEl = document.getElementById("watchlist-count");
     const summaryEl = document.getElementById("bout-count-summary");
+    const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
+    const dateStr = getDayDateStr(basho, state.selectedDay);
 
     watchlistCountEl.textContent = state.starredBouts.size + state.starredRikishi.size;
 
     const query = state.torikumiSearch.trim().toLowerCase();
 
-    const filtered = state.boutsForCurrentSelection.filter((bout) => {
-      const east = rikishiById.get(bout.eastId);
-      const west = rikishiById.get(bout.westId);
-      if (!east || !west) return false;
+    const filtered = state.boutsForCurrentSelection
+      .filter((bout) => {
+        const east = rikishiById.get(bout.eastId);
+        const west = rikishiById.get(bout.westId);
+        if (!east || !west) return false;
 
-      const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
-      const isStarred =
-        state.starredBouts.has(boutKey) ||
-        state.starredRikishi.has(east.id) ||
-        state.starredRikishi.has(west.id);
+        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
+        const isStarred =
+          state.starredBouts.has(boutKey) ||
+          state.starredRikishi.has(east.id) ||
+          state.starredRikishi.has(west.id);
 
-      if (state.torikumiFilter === "sanyaku" && !bout.isSanyaku) return false;
-      if (state.torikumiFilter === "stakes") {
-        const hasUnbeaten =
-          east.currentRecord.includes("7-0") ||
-          west.currentRecord.includes("7-0") ||
-          east.currentRecord.includes("6-1") ||
-          west.currentRecord.includes("6-1");
-        if (!hasUnbeaten) return false;
-      }
-      if (state.torikumiFilter === "kyushu") {
-        const kyushuPattern = /Nagasaki|Kumamoto|Okinawa|Kyushu|長崎|熊本|沖縄|九州/i;
-        if (!kyushuPattern.test(east.originEn + east.originJp + west.originEn + west.originJp)) {
-          return false;
+        if (state.torikumiFilter === "sanyaku" && !bout.isSanyaku) return false;
+        if (state.torikumiFilter === "stakes") {
+          const hasLeader =
+            east.currentRecord.includes("7-1") ||
+            west.currentRecord.includes("7-1") ||
+            east.currentRecord.includes("8-0") ||
+            west.currentRecord.includes("8-0") ||
+            east.currentRecord.includes("7-0") ||
+            west.currentRecord.includes("7-0");
+          if (!hasLeader) return false;
         }
-      }
-      if (state.torikumiFilter === "starred" && !isStarred) return false;
+        if (state.torikumiFilter === "kyushu") {
+          const kyushuPattern = /Nagasaki|Kumamoto|Okinawa|Fukuoka|Kyushu|長崎|熊本|沖縄|福岡|九州/i;
+          if (!kyushuPattern.test(east.originEn + east.originJp + west.originEn + west.originJp)) {
+            return false;
+          }
+        }
+        if (state.torikumiFilter === "starred" && !isStarred) return false;
 
-      if (query) {
-        const haystack = [
-          east.shikonaKanji,
-          east.romaji,
-          east.furigana,
-          east.styleCode,
-          east.heyaEn,
-          west.shikonaKanji,
-          west.romaji,
-          west.furigana,
-          west.styleCode,
-          west.heyaEn,
-          bout.storylineEn,
-          bout.storylineJp
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
+        if (query) {
+          const haystack = [
+            east.shikonaKanji,
+            east.romaji,
+            east.furigana,
+            east.styleCode,
+            east.heyaEn,
+            west.shikonaKanji,
+            west.romaji,
+            west.furigana,
+            west.styleCode,
+            west.heyaEn,
+            bout.storylineEn,
+            bout.storylineJp
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => (state.boutOrder === "asc" ? a.boutNo - b.boutNo : b.boutNo - a.boutNo));
 
-    summaryEl.textContent = `Showing ${filtered.length} of ${state.boutsForCurrentSelection.length} Makuuchi bouts (Day ${state.selectedDay})`;
+    summaryEl.textContent = `Showing ${filtered.length} of ${state.boutsForCurrentSelection.length} Makuuchi bouts (${dateStr} • Day ${state.selectedDay})`;
 
     if (filtered.length === 0) {
       container.innerHTML = `
@@ -898,6 +982,7 @@
       state.selectedBashoId = e.target.value;
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
+      syncWithLiveSumoApi();
     });
 
     // Day 1-15 Strip
@@ -907,6 +992,15 @@
       state.selectedDay = parseInt(btn.getAttribute("data-day"), 10);
       initDayStrip();
       generateScheduleForDay(state.selectedDay);
+      renderTorikumiList();
+      syncWithLiveSumoApi();
+    });
+
+    // Bout Order Toggle (Last Match First vs. Last Match at Bottom)
+    document.getElementById("bout-order-toggle-btn").addEventListener("click", () => {
+      state.boutOrder = state.boutOrder === "desc" ? "asc" : "desc";
+      localStorage.setItem("dohyo_bout_order", state.boutOrder);
+      updateBoutOrderButton();
       renderTorikumiList();
     });
 
