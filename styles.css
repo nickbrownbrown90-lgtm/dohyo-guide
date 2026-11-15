@@ -1,0 +1,1406 @@
+/* ==========================================================================
+   Dohyō Guide (土俵ガイド) — Grand Sumo Companion Design System
+   Aesthetic: Modern Banzuke & Woodblock (Washi Paper Light & Arena Dark Mode)
+   ========================================================================== */
+
+:root {
+  /* Washi Paper Light Theme (Default) */
+  --bg-primary: #FAF6EE;
+  --bg-secondary: #F2EBDC;
+  --bg-elevated: #FFFDF9;
+  --bg-card: #FFFDF9;
+  --bg-subtle: #EAE0CC;
+  --bg-glass: rgba(250, 246, 238, 0.92);
+
+  /* Sumi Ink Text Hierarchy */
+  --text-primary: #181512;
+  --text-secondary: #433D36;
+  --text-muted: #6E655A;
+  --text-faint: #928779;
+
+  /* Traditional Sumo Accents */
+  /* Higashi (東 East) — Vermilion / Beni-iro */
+  --higashi-primary: #B91C1C;
+  --higashi-bg: #FEF2F2;
+  --higashi-border: #FCA5A5;
+  --higashi-text: #991B1B;
+
+  /* Nishi (西 West) — Deep Indigo / Ai-iro */
+  --nishi-primary: #1E3A8A;
+  --nishi-bg: #EFF6FF;
+  --nishi-border: #93C5FD;
+  --nishi-text: #1E40AF;
+
+  /* Kinboshi / Gold / Kenshō / Tassel Accents */
+  --gold-primary: #B45309;
+  --gold-accent: #D97706;
+  --gold-bg: #FEF3C7;
+  --gold-border: #FCD34D;
+
+  /* Murasaki (Gyoji Tate-gyoji sacred purple) */
+  --murasaki-primary: #581C87;
+  --murasaki-bg: #F3E8FF;
+
+  /* Dohyo Clay & Woodblock Borders */
+  --border-strong: #2C251E;
+  --border-medium: #C6B9A3;
+  --border-subtle: #DFD5C3;
+  --shadow-card: 0 2px 10px rgba(24, 21, 18, 0.06), 0 1px 2px rgba(24, 21, 18, 0.05);
+  --shadow-elevated: 0 12px 28px rgba(24, 21, 18, 0.14), 0 2px 6px rgba(24, 21, 18, 0.08);
+
+  /* Typography */
+  --font-mincho: 'Shippori Mincho', 'Noto Serif JP', 'Hiragino Mincho ProN', serif;
+  --font-sans: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Spacing & Layout */
+  --max-width: 1080px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition-fast: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Arena Dark Mode — Engineered for dim arena seating without glare */
+[data-theme="dark"] {
+  --bg-primary: #111113;
+  --bg-secondary: #18181B;
+  --bg-elevated: #1E1E22;
+  --bg-card: #1A1A1E;
+  --bg-subtle: #27272C;
+  --bg-glass: rgba(17, 17, 19, 0.93);
+
+  --text-primary: #F5F2EB;
+  --text-secondary: #D4CEC3;
+  --text-muted: #9E9689;
+  --text-faint: #6E685F;
+
+  --higashi-primary: #EF4444;
+  --higashi-bg: rgba(185, 28, 28, 0.16);
+  --higashi-border: rgba(239, 68, 68, 0.4);
+  --higashi-text: #FCA5A5;
+
+  --nishi-primary: #3B82F6;
+  --nishi-bg: rgba(30, 58, 138, 0.22);
+  --nishi-border: rgba(96, 165, 250, 0.4);
+  --nishi-text: #93C5FD;
+
+  --gold-primary: #F59E0B;
+  --gold-accent: #FBBF24;
+  --gold-bg: rgba(217, 119, 6, 0.16);
+  --gold-border: rgba(251, 191, 36, 0.38);
+
+  --border-strong: #524B42;
+  --border-medium: #38342E;
+  --border-subtle: #282521;
+  --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 16px 36px rgba(0, 0, 0, 0.6);
+}
+
+/* ==========================================================================
+   Reset & Base Typography
+   ========================================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.55;
+  min-height: 100vh;
+  padding-bottom: 84px;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  /* Subtle washi paper fiber texture via radial/linear noise simulation */
+  background-image: radial-gradient(rgba(146, 135, 121, 0.06) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+/* Ruby Furigana Typography */
+ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+
+rt {
+  font-family: var(--font-sans);
+  font-size: 0.56em;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  user-select: none;
+}
+
+/* Language Mode Visibility Helpers */
+body[data-lang="en"] .lang-jp-only {
+  display: none !important;
+}
+body[data-lang="jp"] .lang-en-only {
+  display: none !important;
+}
+body[data-lang="jp"] rt {
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Woodblock Banzuke Frame & Header
+   ========================================================================== */
+.top-noren-stripe {
+  height: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--higashi-primary) 0%,
+    var(--higashi-primary) 48%,
+    var(--gold-accent) 48%,
+    var(--gold-accent) 52%,
+    var(--nishi-primary) 52%,
+    var(--nishi-primary) 100%
+  );
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 2px solid var(--border-strong);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.header-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0.65rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.header-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.gunbai-emblem {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mincho);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--higashi-primary);
+  box-shadow: inset 0 0 0 2px var(--bg-card);
+  flex-shrink: 0;
+}
+
+.brand-titles h1 {
+  font-family: var(--font-mincho);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.brand-titles .brand-en {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.brand-subtitle {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.live-basho-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border: 1px solid var(--gold-border);
+}
+
+/* Header Controls (Language Switcher & Theme Toggle) */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.lang-segmented {
+  display: inline-flex;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.lang-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.28rem 0.55rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lang-btn.active {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 0.32rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--border-strong);
+}
+
+/* Primary Navigation Tabs */
+.nav-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.45rem;
+}
+
+.nav-tab-btn {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: 0.42rem 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  transition: all var(--transition-fast);
+}
+
+.nav-tab-btn .tab-jp {
+  font-family: var(--font-mincho);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.nav-tab-btn .tab-en {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.nav-tab-btn:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-secondary);
+}
+
+.nav-tab-btn.active {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: var(--text-primary);
+}
+
+.nav-tab-btn.active .tab-en {
+  color: var(--bg-secondary);
+}
+
+/* ==========================================================================
+   Main Container & Section Headers
+   ========================================================================== */
+.main-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 1.15rem 1rem 2rem;
+}
+
+.tab-panel {
+  display: none;
+  animation: fadeIn 180ms ease-out;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Banzuke Banner Hero Card */
+.banzuke-banner {
+  background: var(--bg-card);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.banzuke-banner::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  border: 1px solid var(--border-medium);
+  pointer-events: none;
+}
+
+.banner-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.banner-title-block h2 {
+  font-family: var(--font-mincho);
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.banner-title-block p {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+.api-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 0.28rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #16A34A;
+}
+
+.status-dot.syncing {
+  background: #D97706;
+}
+
+/* ==========================================================================
+   Torikumi Controls (Basho Selector, Day Bar, Filter Pills)
+   ========================================================================== */
+.torikumi-controls {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: var(--shadow-card);
+}
+
+.controls-top-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.control-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.select-input, .search-input {
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.65rem;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.select-input:focus, .search-input:focus {
+  border-color: var(--text-primary);
+}
+
+.action-btn {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.42rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+/* 15-Day Horizontal Selector Strip */
+.day-strip {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+}
+
+.day-btn {
+  min-width: 44px;
+  padding: 0.32rem 0.4rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.day-btn .day-kanji {
+  font-family: var(--font-mincho);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.day-btn.special-day {
+  border-color: var(--gold-border);
+}
+
+.day-btn.active {
+  background: var(--higashi-primary);
+  color: #FFFFFF;
+  border-color: var(--higashi-primary);
+}
+
+/* Filter Pill Row */
+.filter-pills-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.65rem;
+}
+
+.filter-pills {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.filter-pill {
+  border: 1px solid var(--border-medium);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-pill.active {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: var(--text-primary);
+}
+
+/* ==========================================================================
+   East vs. West Bout Cards (取組カード)
+   ========================================================================== */
+.bout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.bout-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-top: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.bout-card.starred-bout {
+  border-color: var(--gold-accent);
+  box-shadow: 0 0 0 1px var(--gold-accent), var(--shadow-card);
+}
+
+/* Bout Top Metadata Bar */
+.bout-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.48rem 0.9rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bout-num-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bout-number-badge {
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 700;
+  padding: 0.12rem 0.48rem;
+  border-radius: 3px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.bout-time-tag {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.stakes-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.14rem 0.52rem;
+  border-radius: 3px;
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border: 1px solid var(--gold-border);
+}
+
+.star-bout-btn {
+  border: 1px solid var(--border-medium);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.star-bout-btn.active {
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border-color: var(--gold-accent);
+}
+
+/* East vs. Center Gunbai vs. West Grid */
+.bout-matchup-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;
+}
+
+.corner-side {
+  padding: 0.95rem 1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  position: relative;
+}
+
+.corner-side:hover {
+  background: var(--bg-secondary);
+}
+
+.corner-east {
+  border-left: 4px solid var(--higashi-primary);
+  text-align: left;
+}
+
+.corner-west {
+  border-right: 4px solid var(--nishi-primary);
+  text-align: right;
+  align-items: flex-end;
+}
+
+.corner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.corner-west .corner-header {
+  justify-content: flex-end;
+}
+
+.side-indicator {
+  font-family: var(--font-mincho);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.1rem 0.42rem;
+  border-radius: 3px;
+}
+
+.corner-east .side-indicator {
+  background: var(--higashi-bg);
+  color: var(--higashi-text);
+  border: 1px solid var(--higashi-border);
+}
+
+.corner-west .side-indicator {
+  background: var(--nishi-bg);
+  color: var(--nishi-text);
+  border: 1px solid var(--nishi-border);
+}
+
+.rank-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.rikishi-name-block {
+  margin: 0.2rem 0 0.35rem;
+}
+
+.rikishi-kanji-large {
+  font-family: var(--font-mincho);
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.rikishi-romaji-sub {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: block;
+}
+
+.rikishi-meaning-hint {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.corner-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.corner-west .corner-stats-row {
+  justify-content: flex-end;
+}
+
+.record-pill {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+}
+
+.style-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 3px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.shiroboshi-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--higashi-primary);
+}
+
+/* Center Gunbai & H2H Column */
+.bout-center-gunbai {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.65rem;
+  border-left: 1px dashed var(--border-medium);
+  border-right: 1px dashed var(--border-medium);
+  background: var(--bg-secondary);
+  min-width: 118px;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.h2h-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.h2h-tally {
+  font-family: var(--font-mono);
+  font-size: 0.98rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.h2h-east-num { color: var(--higashi-primary); }
+.h2h-west-num { color: var(--nishi-primary); }
+
+.h2h-bar {
+  width: 84px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--border-medium);
+  overflow: hidden;
+  display: flex;
+}
+
+.h2h-bar-east {
+  background: var(--higashi-primary);
+  height: 100%;
+}
+
+.h2h-bar-west {
+  background: var(--nishi-primary);
+  height: 100%;
+}
+
+.kimarite-result-chip {
+  margin-top: 0.2rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Storyline & Fun Match Facts Footer */
+.bout-storyline-box {
+  padding: 0.75rem 1rem;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.storyline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.storyline-badge {
+  font-family: var(--font-mincho);
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--higashi-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.storyline-text-en {
+  font-size: 0.84rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.storyline-text-jp {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  font-family: var(--font-sans);
+}
+
+.bout-quick-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.inspect-btn {
+  border: 1px solid var(--border-medium);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.inspect-btn:hover {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+/* ==========================================================================
+   Tab 2: Rikishi Directory & Shikona Kanji Deep-Dive Cards
+   ========================================================================== */
+.rikishi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.rikishi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-top: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.rikishi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+}
+
+.rikishi-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.rank-stamp {
+  font-family: var(--font-mincho);
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.18rem 0.55rem;
+  border-radius: 3px;
+  background: var(--higashi-bg);
+  color: var(--higashi-text);
+  border: 1px solid var(--higashi-border);
+}
+
+.rank-stamp.west-stamp {
+  background: var(--nishi-bg);
+  color: var(--nishi-text);
+  border-color: var(--nishi-border);
+}
+
+.rikishi-title-group h3 {
+  font-family: var(--font-mincho);
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.rikishi-romaji-headline {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.shikona-literal-banner {
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--gold-accent);
+  padding: 0.45rem 0.65rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.8rem;
+}
+
+.shikona-literal-banner strong {
+  color: var(--gold-primary);
+}
+
+/* Character-by-Character Kanji Breakdown Grid */
+.kanji-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.45rem;
+}
+
+.kanji-tile {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.45rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.kanji-char {
+  font-family: var(--font-mincho);
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.kanji-reading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--higashi-primary);
+}
+
+.kanji-meaning {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.kanji-note {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+}
+
+.rikishi-meta-table {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-item .meta-k {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.meta-item .meta-v {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Tab 3: Kimarite Explorer (決まり手図鑑)
+   ========================================================================== */
+.kimarite-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.9rem;
+}
+
+.kimarite-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.95rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.kimarite-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.kimarite-title-kanji {
+  font-family: var(--font-mincho);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.kimarite-freq-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.48rem;
+  border-radius: 3px;
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border: 1px solid var(--gold-border);
+}
+
+.kimarite-cat-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.12rem 0.48rem;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  width: fit-content;
+}
+
+.kimarite-kanji-mini {
+  font-size: 0.76rem;
+  background: var(--bg-secondary);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--nishi-primary);
+}
+
+.specialist-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.specialist-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 99px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.specialist-chip:hover {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+/* ==========================================================================
+   Tab 4: Live Venue & Ritual Companion (観戦・土俵儀礼ガイド)
+   ========================================================================== */
+.venue-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1rem;
+}
+
+.venue-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-top: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 1.1rem;
+  box-shadow: var(--shadow-card);
+}
+
+.venue-card h3 {
+  font-family: var(--font-mincho);
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 0.65rem;
+  padding: 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--border-strong);
+}
+
+.timeline-item.highlight-slot {
+  border-left-color: var(--higashi-primary);
+  background: var(--higashi-bg);
+}
+
+.timeline-time {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--higashi-primary);
+}
+
+/* Scoreboard Simulator & Kenshō Calculator */
+.denko-board-mockup {
+  background: #141614;
+  color: #F5F2EB;
+  border: 3px solid #3A342B;
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+  margin: 0.75rem 0;
+  font-family: var(--font-mincho);
+}
+
+.denko-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  text-align: center;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #2C302C;
+}
+
+.shiroboshi-circle {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #F5F2EB;
+  border: 1px solid #F5F2EB;
+}
+
+.kuroboshi-circle {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #141614;
+  border: 2px solid #F5F2EB;
+}
+
+.kensho-calc-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.kensho-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.kensho-stat-box {
+  background: var(--bg-card);
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.kensho-stat-box .val {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--gold-primary);
+}
+
+/* ==========================================================================
+   Detail Modal (Shikona Deep-Dive & Match Inspector)
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(12, 10, 9, 0.72);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal-sheet {
+  background: var(--bg-card);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  max-width: 680px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-elevated);
+  padding: 1.25rem;
+  position: relative;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 768px) {
+  .venue-grid {
+    grid-template-columns: 1fr;
+  }
+  .bout-matchup-grid {
+    grid-template-columns: 1fr;
+  }
+  .corner-west {
+    text-align: left;
+    align-items: flex-start;
+    border-right: none;
+    border-left: 4px solid var(--nishi-primary);
+  }
+  .corner-west .corner-header,
+  .corner-west .corner-stats-row {
+    justify-content: flex-start;
+  }
+  .bout-center-gunbai {
+    flex-direction: row;
+    justify-content: space-between;
+    border-left: none;
+    border-right: none;
+    border-top: 1px dashed var(--border-medium);
+    border-bottom: 1px dashed var(--border-medium);
+    padding: 0.45rem 1rem;
+  }
+  .kensho-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}

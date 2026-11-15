@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="washi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dohyō Guide (土俵ガイド) — Grand Sumo Bilingual Companion &amp; Kanji Decoder</title>
+  <meta name="description" content="Bilingual (English + Japanese) Grand Sumo tournament companion web app. Read the arena scoreboard, explore daily Torikumi matchups, decode Shikona kanji character-by-character, and master Kimarite winning moves." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-lang="dual">
+  <!-- Traditional Higashi (East Crimson) / Gold / Nishi (West Indigo) Noren Stripe -->
+  <div class="top-noren-stripe" aria-hidden="true"></div>
+
+  <!-- Sticky Arena Companion Header -->
+  <header class="site-header" id="site-header">
+    <div class="header-inner">
+      <div class="header-top-row">
+        <a href="#top" class="brand-mark" id="brand-home-link">
+          <div class="gunbai-emblem" title="Gunbai (Referee Fan)">軍</div>
+          <div class="brand-titles">
+            <h1>
+              <ruby>土<rt>ど</rt></ruby><ruby>俵<rt>ひょう</rt></ruby>ガイド
+              <span class="brand-en">Dohyō Guide</span>
+            </h1>
+            <div class="brand-subtitle">
+              <span class="live-basho-pill" id="active-basho-pill">★ 九州場所 • Day 8 (Nakabi 中日)</span>
+              <span class="lang-en-only">Grand Sumo Arena Companion</span>
+              <span class="lang-jp-only">大相撲観戦・四股名漢字解説</span>
+            </div>
+          </div>
+        </a>
+
+        <!-- Bilingual Mode & Washi/Arena Dark Mode Controls -->
+        <div class="header-controls">
+          <div class="lang-segmented" role="group" aria-label="Language Display Mode">
+            <button type="button" class="lang-btn active" id="lang-btn-dual" data-lang-mode="dual" title="Side-by-side Kanji + Furigana + English">
+              Dual 日/EN
+            </button>
+            <button type="button" class="lang-btn" id="lang-btn-en" data-lang-mode="en" title="English Focus with Kanji Reference">
+              EN
+            </button>
+            <button type="button" class="lang-btn" id="lang-btn-jp" data-lang-mode="jp" title="Japanese Banzuke Focus">
+              日本語
+            </button>
+          </div>
+
+          <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle Washi Light or Arena Dark Theme">
+            <span id="theme-icon">🏮</span>
+            <span id="theme-label">Arena Dark</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 Core Navigation Tabs -->
+      <nav class="nav-tabs" aria-label="Main Sumo Sections">
+        <button type="button" class="nav-tab-btn active" id="tab-btn-torikumi" data-tab="torikumi">
+          <span class="tab-jp"><ruby>取<rt>とり</rt></ruby><ruby>組<rt>くみ</rt></ruby>・見どころ</span>
+          <span class="tab-en">1. Today's Matches</span>
+        </button>
+        <button type="button" class="nav-tab-btn" id="tab-btn-rikishi" data-tab="rikishi">
+          <span class="tab-jp"><ruby>力<rt>りき</rt></ruby><ruby>士<rt>し</rt></ruby>・<ruby>四<rt>し</rt></ruby><ruby>股<rt>こ</rt></ruby><ruby>名<rt>な</rt></ruby></span>
+          <span class="tab-en">2. Rikishi &amp; Kanji</span>
+        </button>
+        <button type="button" class="nav-tab-btn" id="tab-btn-kimarite" data-tab="kimarite">
+          <span class="tab-jp"><ruby>決<rt>き</rt></ruby>まり<ruby>手<rt>て</rt></ruby>図鑑</span>
+          <span class="tab-en">3. Kimarite Moves</span>
+        </button>
+        <button type="button" class="nav-tab-btn" id="tab-btn-venue" data-tab="venue">
+          <span class="tab-jp"><ruby>観<rt>かん</rt></ruby><ruby>戦<rt>せん</rt></ruby>・<ruby>儀<rt>ぎ</rt></ruby><ruby>礼<rt>れい</rt></ruby></span>
+          <span class="tab-en">4. Arena Guide</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="main-container" id="top">
+
+    <!-- ====================================================================
+         TAB 1: TORIKUMI (取組 — Today's Matches, H2H, & Storylines)
+         ==================================================================== -->
+    <section class="tab-panel active" id="panel-torikumi" aria-labelledby="tab-btn-torikumi">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only"><ruby>幕<rt>まく</rt></ruby><ruby>内<rt>うち</rt></ruby><ruby>取<rt>とり</rt></ruby><ruby>組<rt>くみ</rt></ruby>・<ruby>見<rt>み</rt></ruby>どころ解説</span>
+              <span class="lang-en-only">Makuuchi Torikumi — Match Schedule &amp; Storylines</span>
+            </h2>
+            <p class="lang-en-only">
+              Read the arena scoreboard (<strong style="color:var(--higashi-primary)">東 Higashi / East</strong> on left, <strong style="color:var(--nishi-primary)">西 Nishi / West</strong> on right). Tap any wrestler to decode their Shikona kanji character-by-character.
+            </p>
+            <p class="lang-jp-only">
+              電光掲示板と同じ配置（左＝<strong style="color:var(--higashi-primary)">東・紅</strong>、右＝<strong style="color:var(--nishi-primary)">西・藍</strong>）。力士名をタップすると四股名の漢字一文字ずつの由来・部屋伝統・戦績を表示します。
+            </p>
+          </div>
+          <div class="api-status-badge" id="api-status-badge">
+            <span class="status-dot" id="api-status-dot"></span>
+            <span id="api-status-text">Curated Nakabi Dataset Ready + Live API Sync</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Basho, Day 1-15 Strip, Search & Filter Controls -->
+      <div class="torikumi-controls">
+        <div class="controls-top-row">
+          <div class="control-group">
+            <label for="basho-select" class="control-label">Basho 場所:</label>
+            <select id="basho-select" class="select-input" aria-label="Select Grand Sumo Tournament"></select>
+          </div>
+
+          <div class="control-group">
+            <input
+              type="search"
+              id="torikumi-search"
+              class="search-input"
+              placeholder="Search bout (e.g. Hoshoryu, 豊昇龍, Ura, Oshi)..."
+              aria-label="Search bouts by wrestler name, kanji, or style"
+            />
+            <button type="button" class="action-btn" id="sync-live-api-btn" title="Fetch live results from sumo-api.com with automatic offline fallback">
+              🔄 Sync Live API
+            </button>
+          </div>
+        </div>
+
+        <!-- 15-Day Selector Strip -->
+        <div class="day-strip" id="day-strip" role="tablist" aria-label="Tournament Days 1 to 15"></div>
+
+        <!-- Filter Pills -->
+        <div class="filter-pills-row">
+          <div class="filter-pills" id="torikumi-filter-pills">
+            <button type="button" class="filter-pill active" data-filter="all">All Bouts 全取組</button>
+            <button type="button" class="filter-pill" data-filter="sanyaku">San'yaku Featured 三役・上位</button>
+            <button type="button" class="filter-pill" data-filter="stakes">Unbeaten / Kachi-koshi 勝ち越し・全勝</button>
+            <button type="button" class="filter-pill" data-filter="kyushu">Kyushu / Local Heroes ご当地・九州</button>
+            <button type="button" class="filter-pill" data-filter="starred">★ My Watchlist (<span id="watchlist-count">0</span>)</button>
+          </div>
+          <div style="font-size:0.74rem; color:var(--text-muted);" id="bout-count-summary">
+            Showing 16 featured Makuuchi bouts
+          </div>
+        </div>
+      </div>
+
+      <!-- Dynamic Bout Cards Container -->
+      <div class="bout-list" id="bout-list-container"></div>
+    </section>
+
+    <!-- ====================================================================
+         TAB 2: RIKISHI & SHIKONA KANJI DEEP-DIVE (力士名鑑・四股名漢字解説)
+         ==================================================================== -->
+    <section class="tab-panel" id="panel-rikishi" aria-labelledby="tab-btn-rikishi">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only"><ruby>力<rt>りき</rt></ruby><ruby>士<rt>し</rt></ruby><ruby>名<rt>めい</rt></ruby><ruby>鑑<rt>かん</rt></ruby>・<ruby>四<rt>し</rt></ruby><ruby>股<rt>こ</rt></ruby><ruby>名<rt>な</rt></ruby><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby>の由来</span>
+              <span class="lang-en-only">Rikishi Directory &amp; Shikona Kanji Etymology</span>
+            </h2>
+            <p class="lang-en-only">
+              Every sumo ring name (<em>Shikona</em> 四股名) is a miniature poem encoding a wrestler's stable lineage (e.g., <strong>富士 Fuji</strong> in Isegahama, <strong>琴 Koto</strong> in Sadogatake), hometown mountains/seas, or family heritage.
+            </p>
+            <p class="lang-jp-only">
+              力士の四股名（しこな）には、部屋の伝統（「富士」「琴」「海」「鵬」など）、師匠や祖父から受け継いだ文字、故郷の山河が刻まれています。一文字ずつの読みと意味を解説します。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="torikumi-controls">
+        <div class="controls-top-row">
+          <div class="control-group" style="flex:1;">
+            <input
+              type="search"
+              id="rikishi-search"
+              class="search-input"
+              style="width:100%; max-width:420px;"
+              placeholder="Search Kanji, Romaji, Heya, Hometown, or Meaning (e.g. Dragon, 富士, Monkey)..."
+              aria-label="Search Rikishi directory"
+            />
+          </div>
+          <div class="filter-pills" id="rikishi-rank-pills">
+            <button type="button" class="filter-pill active" data-rank="all">All Ranks 全番付 (22)</button>
+            <button type="button" class="filter-pill" data-rank="Yokozuna-Ozeki">Yokozuna &amp; Ozeki 横綱・大関</button>
+            <button type="button" class="filter-pill" data-rank="Sanyaku">Sekiwake &amp; Komusubi 関脇・小結</button>
+            <button type="button" class="filter-pill" data-rank="Maegashira">Maegashira 前頭</button>
+            <button type="button" class="filter-pill" data-rank="Fuji">富士 'Fuji' Lineage</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rikishi-grid" id="rikishi-grid-container"></div>
+    </section>
+
+    <!-- ====================================================================
+         TAB 3: KIMARITE EXPLORER (決まり手図鑑 — Winning Moves)
+         ==================================================================== -->
+    <section class="tab-panel" id="panel-kimarite" aria-labelledby="tab-btn-kimarite">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only"><ruby>決<rt>き</rt></ruby>まり<ruby>手<rt>て</rt></ruby>図鑑（82手分類・漢字構造解説）</span>
+              <span class="lang-en-only">Kimarite Explorer — Winning Techniques &amp; Kanji Mechanics</span>
+            </h2>
+            <p class="lang-en-only">
+              Immediately after every bout, the stadium announcer proclaims the winning technique (<em>Kimarite</em>) and displays it on the scoreboard. Decode the compound kanji and see which active wrestlers specialize in each move.
+            </p>
+            <p class="lang-jp-only">
+              勝負が決まった直後に場内放送と電光掲示板で発表される「決まり手」。幕内での出現頻度、漢字の成り立ち、および現役の得意力士を一覧できます。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="torikumi-controls">
+        <div class="controls-top-row">
+          <div class="control-group" style="flex:1;">
+            <input
+              type="search"
+              id="kimarite-search"
+              class="search-input"
+              style="width:100%; max-width:380px;"
+              placeholder="Search move (e.g. Yorikiri, 寄り切り, throw, leg, Ura)..."
+              aria-label="Search Kimarite techniques"
+            />
+          </div>
+          <div class="filter-pills" id="kimarite-cat-pills">
+            <button type="button" class="filter-pill active" data-cat="all">All Moves 全て</button>
+            <button type="button" class="filter-pill" data-cat="kihon">Basic 基本技 (Push/Force)</button>
+            <button type="button" class="filter-pill" data-cat="nage">Throws 投げ手</button>
+            <button type="button" class="filter-pill" data-cat="kake">Leg Trips 掛け手</button>
+            <button type="button" class="filter-pill" data-cat="hineri">Twists &amp; Rare 捻り・反り・特殊</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="kimarite-grid" id="kimarite-grid-container"></div>
+    </section>
+
+    <!-- ====================================================================
+         TAB 4: LIVE VENUE & RITUAL COMPANION (観戦・土俵儀礼ガイド)
+         ==================================================================== -->
+    <section class="tab-panel" id="panel-venue" aria-labelledby="tab-btn-venue">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only"><ruby>本<rt>ほん</rt></ruby><ruby>場<rt>ば</rt></ruby><ruby>所<rt>しょ</rt></ruby><ruby>観<rt>かん</rt></ruby><ruby>戦<rt>せん</rt></ruby>・<ruby>土<rt>ど</rt></ruby><ruby>俵<rt>ひょう</rt></ruby><ruby>儀<rt>ぎ</rt></ruby><ruby>礼<rt>れい</rt></ruby>ガイド</span>
+              <span class="lang-en-only">Live Arena Schedule, Scoreboard Decoder &amp; Rituals</span>
+            </h2>
+            <p class="lang-en-only">
+              Everything happening inside the arena from morning drums (08:30) through the top-division ring-entering ceremonies (15:40), prize banner parades, referee tassel ranks, and the 18:00 bow-twirling ceremony.
+            </p>
+            <p class="lang-jp-only">
+              開場から結びの一番・弓取り式までのタイムスケジュール、電光掲示板の白星・黒星の見方、懸賞金計算機、行司の装束と房の色を網羅。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="venue-grid">
+        <!-- Left Column: Hour-by-Hour Arena Timeline -->
+        <div class="venue-card">
+          <h3>
+            🕒
+            <span class="lang-en-only">Matchday Arena Timeline (08:30 – 18:00)</span>
+            <span class="lang-jp-only">本場所の一日・進行スケジュール</span>
+          </h3>
+          <div class="timeline-list" id="venue-timeline-container"></div>
+        </div>
+
+        <!-- Right Column: Scoreboard Decoder + Interactive Kenshō Calculator -->
+        <div style="display:flex; flex-direction:column; gap:1.1rem;">
+          <div class="venue-card">
+            <h3>
+              🏮
+              <span class="lang-en-only">Arena Scoreboard (Denkō Keijiban) &amp; Kenshō Prize Calculator</span>
+              <span class="lang-jp-only">電光掲示板の見方＆懸賞金シミュレーター</span>
+            </h3>
+            <p style="font-size:0.82rem; color:var(--text-secondary);">
+              <span class="lang-en-only">On the arena scoreboard, a <strong>White Circle (○ Shiroboshi)</strong> marks a win and a <strong>Black Circle (● Kuroboshi)</strong> marks a loss. Before top bouts, attendants parade sponsor banners (<em>Kenshō-maku</em>) around the ring.</span>
+              <span class="lang-jp-only">電光掲示板では<strong>○（白星＝勝ち）</strong>、<strong>●（黒星＝負け）</strong>で表されます。取組前に土俵を回る「懸賞幕」の本数を入力すると、力士が受け取る金額を計算できます。</span>
+            </p>
+
+            <!-- Mini Visual Scoreboard Legend -->
+            <div class="denko-board-mockup" aria-label="Sample Arena Scoreboard">
+              <div class="denko-row" style="font-size:0.75rem; color:#9E9689;">
+                <span>東 HIGASHI (East)</span>
+                <span>決まり手</span>
+                <span>西 NISHI (West)</span>
+              </div>
+              <div class="denko-row">
+                <div><span class="shiroboshi-circle"></span> <strong>照ノ富士</strong> (Terunofuji)</div>
+                <span style="font-size:0.78rem; color:#FBBF24;">極め出し</span>
+                <div><span class="kuroboshi-circle"></span> <strong>平戸海</strong> (Hiradoumi)</div>
+              </div>
+              <div class="denko-row" style="border-bottom:none;">
+                <div><span class="shiroboshi-circle"></span> <strong>琴櫻</strong> (Kotozakura)</div>
+                <span style="font-size:0.78rem; color:#FBBF24;">寄り切り</span>
+                <div><span class="kuroboshi-circle"></span> <strong>王鵬</strong> (Ōhō)</div>
+              </div>
+            </div>
+
+            <!-- Interactive Kenshō Prize Banner Calculator -->
+            <div class="kensho-calc-box">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap;">
+                <label for="kensho-input" style="font-size:0.82rem; font-weight:700;">
+                  🎌 Count the Kenshō Banners in the Ring (懸賞幕の本数):
+                </label>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                  <input
+                    type="number"
+                    id="kensho-input"
+                    class="select-input"
+                    min="1"
+                    max="60"
+                    value="15"
+                    style="width:78px; text-align:center;"
+                  />
+                  <span style="font-size:0.78rem; font-weight:700;">banners (本)</span>
+                </div>
+              </div>
+              <div class="kensho-breakdown-grid">
+                <div class="kensho-stat-box">
+                  <div style="font-size:0.68rem; color:var(--text-muted);">Total Sponsor Value 総額</div>
+                  <div class="val" id="kensho-total-yen">¥1,050,000</div>
+                  <div style="font-size:0.66rem; color:var(--text-muted);">¥70,000 / banner</div>
+                </div>
+                <div class="kensho-stat-box">
+                  <div style="font-size:0.68rem; color:var(--text-muted);">Cash in Envelope 手渡し現金</div>
+                  <div class="val" id="kensho-cash-yen">¥450,000</div>
+                  <div style="font-size:0.66rem; color:var(--text-muted);">¥30,000 / banner on gunbai</div>
+                </div>
+                <div class="kensho-stat-box">
+                  <div style="font-size:0.68rem; color:var(--text-muted);">Tax &amp; Retirement Deposit 積立金</div>
+                  <div class="val" id="kensho-fund-yen">¥450,000</div>
+                  <div style="font-size:0.66rem; color:var(--text-muted);">Held by JSA (+ ¥10k fee)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gyoji Referee Tassel Rank Decoder -->
+          <div class="venue-card">
+            <h3>
+              🪭
+              <span class="lang-en-only">Gyōji Referee Tassel Colors &amp; Ranks</span>
+              <span class="lang-jp-only">行司の階級・装束と軍配の房（ふさ）の色</span>
+            </h3>
+            <div class="timeline-list" id="gyoji-ranks-container"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Essential Arena Vocabulary & Chants -->
+      <div class="venue-card" style="margin-top:1.1rem;">
+        <h3>
+          📣
+          <span class="lang-en-only">Essential Arena Chants, Calls &amp; Sumo Terms</span>
+          <span class="lang-jp-only">会場で聞こえる掛け声・相撲用語チートシート</span>
+        </h3>
+        <div class="kimarite-grid" id="vocab-grid-container"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================================================================
+       MODAL: Rikishi Kanji Deep-Dive & Interactive Bout Inspector
+       ====================================================================== -->
+  <div class="modal-backdrop" id="detail-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-sheet" id="detail-modal-sheet">
+      <button type="button" class="modal-close-btn" id="modal-close-btn" aria-label="Close modal">✕</button>
+      <div id="modal-body-content"></div>
+    </div>
+  </div>
+
+  <script src="data/sumoData.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
