@@ -7,6 +7,16 @@
 
   const DATA = window.SUMO_DATA;
 
+  const DIVISIONS = [
+    { key: "Makuuchi", jp: "幕内", order: 6, startMin: 16 * 60 + 15, stepMin: 5 },
+    { key: "Juryo", jp: "十両", order: 5, startMin: 14 * 60 + 30, stepMin: 4 },
+    { key: "Makushita", jp: "幕下", order: 4, startMin: 13 * 60 + 5, stepMin: 2.2 },
+    { key: "Sandanme", jp: "三段目", order: 3, startMin: 11 * 60 + 15, stepMin: 2.5 },
+    { key: "Jonidan", jp: "序二段", order: 2, startMin: 9 * 60 + 10, stepMin: 2.5 },
+    { key: "Jonokuchi", jp: "序ノ口", order: 1, startMin: 8 * 60 + 40, stepMin: 3 }
+  ];
+  const DIVISION_MAP = new Map(DIVISIONS.map((d) => [d.key, d]));
+
   // Application State
   const state = {
     activeTab: "torikumi",
@@ -15,6 +25,7 @@
     selectedBashoId: "202611",
     selectedDay: 9, // Defaults to Day 9 (2026-11-16 JST)
     boutOrder: localStorage.getItem("dohyo_bout_order") || "desc", // "desc" = Last Match First, "asc" = Last Match at Bottom
+    divisionFilter: "all",
     torikumiFilter: "all",
     torikumiSearch: "",
     rikishiRankFilter: "all",
@@ -283,6 +294,28 @@
     return dynamicProfile;
   }
 
+  function updateDivisionPills() {
+    const container = document.getElementById("torikumi-division-pills");
+    if (!container) return;
+    const counts = new Map();
+    state.boutsForCurrentSelection.forEach((b) => {
+      const div = b.division || "Makuuchi";
+      counts.set(div, (counts.get(div) || 0) + 1);
+    });
+    const total = state.boutsForCurrentSelection.length;
+    container.querySelectorAll(".filter-pill").forEach((btn) => {
+      const div = btn.getAttribute("data-division");
+      if (div === "all") {
+        btn.textContent = `All Divisions 全階級 (${total})`;
+      } else {
+        const meta = DIVISION_MAP.get(div);
+        const c = counts.get(div) || 0;
+        btn.textContent = `${div} ${meta ? meta.jp : ""} (${c})`;
+      }
+      btn.classList.toggle("active", div === state.divisionFilter);
+    });
+  }
+
   async function syncWithLiveSumoApi() {
     const dot = document.getElementById("api-status-dot");
     const text = document.getElementById("api-status-text");
@@ -290,31 +323,39 @@
     const dateStr = getDayDateStr(basho, state.selectedDay);
 
     dot.classList.add("syncing");
-    text.textContent = `Syncing sumo-api.com (${dateStr} • Day ${state.selectedDay})...`;
+    text.textContent = `Syncing all 6 divisions (${dateStr} • Day ${state.selectedDay})...`;
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const url = `https://sumo-api.com/api/basho/${basho.apiId}/torikumi/Makuuchi/${state.selectedDay}`;
-      const res = await fetch(url, { signal: controller.signal });
+      const timeout = setTimeout(() => controller.abort(), 7000);
+
+      const curatedByBoutNo = new Map();
+      if (state.selectedBashoId === "202611" && state.selectedDay === 9) {
+        DATA.defaultTorikumi.forEach((b) => curatedByBoutNo.set(b.boutNo, b));
+      }
+
+      const results = await Promise.allSettled(
+        DIVISIONS.map(async (divMeta) => {
+          const url = `https://sumo-api.com/api/basho/${basho.apiId}/torikumi/${divMeta.key}/${state.selectedDay}`;
+          const res = await fetch(url, { signal: controller.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          return { divMeta, torikumi: (json && Array.isArray(json.torikumi)) ? json.torikumi : [] };
+        })
+      );
       clearTimeout(timeout);
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-
-      if (json && Array.isArray(json.torikumi) && json.torikumi.length > 0) {
-        const curatedByBoutNo = new Map();
-        if (state.selectedBashoId === "202611" && state.selectedDay === 9) {
-          DATA.defaultTorikumi.forEach((b) => curatedByBoutNo.set(b.boutNo, b));
-        }
-
-        const mapped = json.torikumi.map((item, idx) => {
+      const allMapped = [];
+      results.forEach((r) => {
+        if (r.status !== "fulfilled") return;
+        const { divMeta, torikumi } = r.value;
+        torikumi.forEach((item, idx) => {
           const bno = item.matchNo || item.boutNo || idx + 1;
-          const curated = curatedByBoutNo.get(bno);
+          const curated = divMeta.key === "Makuuchi" ? curatedByBoutNo.get(bno) : null;
           const eastMatch = resolveOrCreateRikishi(item.eastId, item.eastShikona, item.eastRank, "East");
           const westMatch = resolveOrCreateRikishi(item.westId, item.westShikona, item.westRank, "West");
 
-          const totalMins = 16 * 60 + 15 + (bno - 1) * 5;
+          const totalMins = Math.round(divMeta.startMin + (bno - 1) * divMeta.stepMin);
           const approxTime = `${Math.floor(totalMins / 60)}:${String(totalMins % 60).padStart(2, "0")}`;
 
           const winnerSide =
@@ -324,30 +365,36 @@
               ? "West"
               : null;
 
-          return {
+          allMapped.push({
+            division: divMeta.key,
+            divisionJp: divMeta.jp,
+            divisionOrder: divMeta.order,
             boutNo: bno,
-            boutTitleEn: curated ? curated.boutTitleEn : `Bout #${bno}: ${eastMatch.romaji} vs. ${westMatch.romaji}`,
-            boutTitleJp: curated ? curated.boutTitleJp : `幕内第${bno}番：${eastMatch.shikonaKanji} vs ${westMatch.shikonaKanji}`,
+            boutTitleEn: curated ? curated.boutTitleEn : `${divMeta.key} Bout #${bno}: ${eastMatch.romaji} vs. ${westMatch.romaji}`,
+            boutTitleJp: curated ? curated.boutTitleJp : `${divMeta.jp}第${bno}番：${eastMatch.shikonaKanji} vs ${westMatch.shikonaKanji}`,
             approxTime: curated ? curated.approxTime : approxTime,
-            isSanyaku: curated ? curated.isSanyaku : bno >= 15,
+            isSanyaku: curated ? curated.isSanyaku : (divMeta.key === "Makuuchi" && bno >= 15),
             stakesTagEn: curated ? curated.stakesTagEn : `${item.eastRank || eastMatch.rankEn} vs. ${item.westRank || westMatch.rankEn}`,
-            stakesTagJp: curated ? curated.stakesTagJp : `${eastMatch.rankJp} vs ${westMatch.rankJp}`,
+            stakesTagJp: curated ? curated.stakesTagJp : `${item.eastRank || eastMatch.rankJp} vs ${item.westRank || westMatch.rankJp}`,
             eastId: eastMatch.id,
             westId: westMatch.id,
-            h2hEast: curated ? curated.h2hEast : 3,
-            h2hWest: curated ? curated.h2hWest : 2,
+            h2hEast: curated ? curated.h2hEast : 1,
+            h2hWest: curated ? curated.h2hWest : 1,
             lastMeetingEn: item.kimarite ? `Result: ${item.kimarite}` : curated ? curated.lastMeetingEn : `${dateStr} • Day ${state.selectedDay}`,
             lastMeetingJp: item.kimarite ? `決まり手：${item.kimarite}` : curated ? curated.lastMeetingJp : `${dateStr}（${state.selectedDay}日目）`,
             winnerSide,
             kimariteId: item.kimarite ? item.kimarite.toLowerCase() : null,
-            storylineEn: curated ? curated.storylineEn : `${eastMatch.romaji} (${eastMatch.styleCode}) meets ${westMatch.romaji} (${westMatch.styleCode}) on Day ${state.selectedDay}.`,
-            storylineJp: curated ? curated.storylineJp : `${eastMatch.shikonaKanji}と${westMatch.shikonaKanji}の対戦。`
-          };
+            storylineEn: curated ? curated.storylineEn : `${divMeta.key} division matchup: ${eastMatch.romaji} (${item.eastRank || eastMatch.rankEn}) vs. ${westMatch.romaji} (${item.westRank || westMatch.rankEn}).`,
+            storylineJp: curated ? curated.storylineJp : `${divMeta.jp}の取組：${eastMatch.shikonaKanji} 対 ${westMatch.shikonaKanji}。`
+          });
         });
+      });
 
-        state.boutsForCurrentSelection = mapped;
+      if (allMapped.length > 0) {
+        state.boutsForCurrentSelection = allMapped;
         dot.classList.remove("syncing");
-        text.textContent = `Live API Synced • ${dateStr} (${mapped.length} Makuuchi Bouts)`;
+        text.textContent = `Live API Synced • ${dateStr} (${allMapped.length} Bouts across 6 Divisions)`;
+        updateDivisionPills();
         renderTorikumiList();
         return;
       }
@@ -356,6 +403,7 @@
       dot.classList.remove("syncing");
       text.textContent = `Offline-First Curated Dataset Active (${dateStr} • Day ${state.selectedDay})`;
       generateScheduleForDay(state.selectedDay);
+      updateDivisionPills();
       renderTorikumiList();
     }
   }
@@ -372,16 +420,20 @@
 
     watchlistCountEl.textContent = state.starredBouts.size + state.starredRikishi.size;
     renderDenkoScoreboardPreview();
+    updateDivisionPills();
 
     const query = state.torikumiSearch.trim().toLowerCase();
 
     const filtered = state.boutsForCurrentSelection
       .filter((bout) => {
+        const div = bout.division || "Makuuchi";
+        if (state.divisionFilter !== "all" && div !== state.divisionFilter) return false;
+
         const east = rikishiById.get(bout.eastId);
         const west = rikishiById.get(bout.westId);
         if (!east || !west) return false;
 
-        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
+        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-${div}-B${bout.boutNo}`;
         const isStarred =
           state.starredBouts.has(boutKey) ||
           state.starredRikishi.has(east.id) ||
@@ -408,6 +460,8 @@
 
         if (query) {
           const haystack = [
+            div,
+            bout.divisionJp || "",
             east.shikonaKanji,
             east.romaji,
             east.furigana,
@@ -428,9 +482,17 @@
 
         return true;
       })
-      .sort((a, b) => (state.boutOrder === "asc" ? a.boutNo - b.boutNo : b.boutNo - a.boutNo));
+      .sort((a, b) => {
+        const divA = a.divisionOrder || 6;
+        const divB = b.divisionOrder || 6;
+        if (divA !== divB) {
+          return state.boutOrder === "asc" ? divA - divB : divB - divA;
+        }
+        return state.boutOrder === "asc" ? a.boutNo - b.boutNo : b.boutNo - a.boutNo;
+      });
 
-    summaryEl.textContent = `Showing ${filtered.length} of ${state.boutsForCurrentSelection.length} Makuuchi bouts (${dateStr} • Day ${state.selectedDay})`;
+    const divLabel = state.divisionFilter === "all" ? "All Divisions" : state.divisionFilter;
+    summaryEl.textContent = `Showing ${filtered.length} of ${state.boutsForCurrentSelection.length} bouts (${divLabel} • ${dateStr} • Day ${state.selectedDay})`;
 
     if (filtered.length === 0) {
       container.innerHTML = `
@@ -442,12 +504,14 @@
       const resetBtn = document.getElementById("reset-torikumi-filter-btn");
       if (resetBtn) {
         resetBtn.addEventListener("click", () => {
+          state.divisionFilter = "all";
           state.torikumiFilter = "all";
           state.torikumiSearch = "";
           document.getElementById("torikumi-search").value = "";
           document.querySelectorAll("#torikumi-filter-pills .filter-pill").forEach((p) => {
             p.classList.toggle("active", p.getAttribute("data-filter") === "all");
           });
+          updateDivisionPills();
           renderTorikumiList();
         });
       }
@@ -456,9 +520,11 @@
 
     container.innerHTML = filtered
       .map((bout) => {
+        const div = bout.division || "Makuuchi";
+        const divJp = bout.divisionJp || "幕内";
         const east = rikishiById.get(bout.eastId);
         const west = rikishiById.get(bout.westId);
-        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
+        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-${div}-B${bout.boutNo}`;
         const isStarred =
           state.starredBouts.has(boutKey) ||
           state.starredRikishi.has(east.id) ||
@@ -474,11 +540,11 @@
         const westPct = 100 - eastPct;
 
         return `
-          <article class="bout-card ${isStarred ? "starred-bout" : ""}" id="bout-card-${bout.boutNo}">
+          <article class="bout-card ${isStarred ? "starred-bout" : ""}" id="bout-card-${div}-${bout.boutNo}">
             <!-- Top Metadata Bar -->
             <div class="bout-meta-bar">
               <div class="bout-num-group">
-                <span class="bout-number-badge">#${bout.boutNo}</span>
+                <span class="bout-number-badge">${divJp} #${bout.boutNo}</span>
                 <span class="bout-time-tag">⏱ ${bout.approxTime}</span>
                 <span class="stakes-badge lang-en-only">${bout.stakesTagEn}</span>
                 <span class="stakes-badge lang-jp-only">${bout.stakesTagJp}</span>
@@ -866,7 +932,12 @@
     const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
     const dateStr = getDayDateStr(basho, state.selectedDay);
 
-    const topBouts = state.boutsForCurrentSelection
+    const makuuchiBouts = state.boutsForCurrentSelection.filter(
+      (b) => !b.division || b.division === "Makuuchi"
+    );
+    const pool = makuuchiBouts.length > 0 ? makuuchiBouts : state.boutsForCurrentSelection;
+
+    const topBouts = pool
       .slice()
       .sort((a, b) => b.boutNo - a.boutNo)
       .slice(0, 3);
@@ -1072,6 +1143,14 @@
     // Torikumi Search & Filter Pills
     document.getElementById("torikumi-search").addEventListener("input", (e) => {
       state.torikumiSearch = e.target.value;
+      renderTorikumiList();
+    });
+
+    document.getElementById("torikumi-division-pills").addEventListener("click", (e) => {
+      const pill = e.target.closest(".filter-pill");
+      if (!pill) return;
+      state.divisionFilter = pill.getAttribute("data-division");
+      updateDivisionPills();
       renderTorikumiList();
     });
 

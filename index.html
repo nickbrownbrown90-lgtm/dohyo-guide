@@ -87,14 +87,14 @@
         <div class="banner-header-row">
           <div class="banner-title-block">
             <h2>
-              <span class="lang-jp-only"><ruby>幕<rt>まく</rt></ruby><ruby>内<rt>うち</rt></ruby><ruby>取<rt>とり</rt></ruby><ruby>組<rt>くみ</rt></ruby>・<ruby>見<rt>み</rt></ruby>どころ解説</span>
-              <span class="lang-en-only">Makuuchi Torikumi — Match Schedule &amp; Storylines</span>
+              <span class="lang-jp-only"><ruby>本<rt>ほん</rt></ruby><ruby>場<rt>ば</rt></ruby><ruby>所<rt>しょ</rt></ruby><ruby>全<rt>ぜん</rt></ruby><ruby>階<rt>かい</rt></ruby><ruby>級<rt>きゅう</rt></ruby><ruby>取<rt>とり</rt></ruby><ruby>組<rt>くみ</rt></ruby>・<ruby>見<rt>み</rt></ruby>どころ</span>
+              <span class="lang-en-only">All-Division Torikumi — Match Schedule &amp; Storylines</span>
             </h2>
             <p class="lang-en-only">
-              Read the arena scoreboard (<strong style="color:var(--higashi-primary)">東 Higashi / East</strong> on left, <strong style="color:var(--nishi-primary)">西 Nishi / West</strong> on right). Tap any wrestler to decode their Shikona kanji character-by-character.
+              Read the arena scoreboard (<strong style="color:var(--higashi-primary)">東 Higashi / East</strong> on left, <strong style="color:var(--nishi-primary)">西 Nishi / West</strong> on right). Filter by division from Jonokuchi through Makuuchi, and tap any wrestler to decode their Shikona kanji.
             </p>
             <p class="lang-jp-only">
-              電光掲示板と同じ配置（左＝<strong style="color:var(--higashi-primary)">東・紅</strong>、右＝<strong style="color:var(--nishi-primary)">西・藍</strong>）。力士名をタップすると四股名の漢字一文字ずつの由来・部屋伝統・戦績を表示します。
+              電光掲示板と同じ配置（左＝<strong style="color:var(--higashi-primary)">東・紅</strong>、右＝<strong style="color:var(--nishi-primary)">西・藍</strong>）。序ノ口から幕内まで全階級の取組を絞り込みでき、力士名をタップすると四股名の漢字解説を表示します。
             </p>
           </div>
           <div class="api-status-badge" id="api-status-badge">
@@ -132,7 +132,20 @@
         <!-- 15-Day Selector Strip -->
         <div class="day-strip" id="day-strip" role="tablist" aria-label="Tournament Days 1 to 15"></div>
 
-        <!-- Filter Pills -->
+        <!-- Division Filter Pills -->
+        <div class="filter-pills-row" style="padding-top:0.55rem;">
+          <div class="filter-pills" id="torikumi-division-pills" role="group" aria-label="Filter by Sumo Division">
+            <button type="button" class="filter-pill active" data-division="all">All Divisions 全階級</button>
+            <button type="button" class="filter-pill" data-division="Makuuchi">Makuuchi 幕内</button>
+            <button type="button" class="filter-pill" data-division="Juryo">Juryo 十両</button>
+            <button type="button" class="filter-pill" data-division="Makushita">Makushita 幕下</button>
+            <button type="button" class="filter-pill" data-division="Sandanme">Sandanme 三段目</button>
+            <button type="button" class="filter-pill" data-division="Jonidan">Jonidan 序二段</button>
+            <button type="button" class="filter-pill" data-division="Jonokuchi">Jonokuchi 序ノ口</button>
+          </div>
+        </div>
+
+        <!-- Storyline / Feature Filter Pills -->
         <div class="filter-pills-row">
           <div class="filter-pills" id="torikumi-filter-pills">
             <button type="button" class="filter-pill active" data-filter="all">All Bouts 全取組</button>
@@ -142,7 +155,7 @@
             <button type="button" class="filter-pill" data-filter="starred">★ My Watchlist (<span id="watchlist-count">0</span>)</button>
           </div>
           <div style="font-size:0.74rem; color:var(--text-muted);" id="bout-count-summary">
-            Showing 21 Makuuchi bouts (2026-11-16 • Day 9)
+            Showing 21 bouts (2026-11-16 • Day 9)
           </div>
         </div>
       </div>
