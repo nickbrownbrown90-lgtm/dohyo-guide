@@ -110,6 +110,8 @@ html {
   font-size: 16px;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -118,6 +120,8 @@ body {
   color: var(--text-primary);
   line-height: 1.55;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
   padding-bottom: 84px;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   /* Subtle washi paper fiber texture via radial/linear noise simulation */
@@ -246,17 +250,19 @@ body[data-lang="jp"] rt {
   color: var(--text-muted);
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
 }
 
 .live-basho-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.1rem 0.45rem;
+  padding: 0.12rem 0.45rem;
   border-radius: 3px;
   font-size: 0.68rem;
   font-weight: 700;
+  white-space: nowrap;
   background: var(--gold-bg);
   color: var(--gold-primary);
   border: 1px solid var(--gold-border);
@@ -479,6 +485,8 @@ body[data-lang="jp"] rt {
   gap: 0.65rem;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .control-group {
@@ -486,6 +494,8 @@ body[data-lang="jp"] rt {
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .control-label {
@@ -506,7 +516,15 @@ body[data-lang="jp"] rt {
   border-radius: var(--radius-sm);
   padding: 0.42rem 0.65rem;
   outline: none;
+  max-width: 100%;
+  min-width: 0;
   transition: border-color var(--transition-fast);
+}
+
+.select-input {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .select-input:focus, .search-input:focus {
@@ -1375,6 +1393,23 @@ body[data-lang="jp"] rt {
 
 /* Responsive Breakpoints */
 @media (max-width: 768px) {
+  .control-group {
+    width: 100%;
+  }
+  .select-input,
+  .search-input {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .nav-tab-btn {
+    padding: 0.35rem 0.2rem;
+  }
+  .nav-tab-btn .tab-jp {
+    font-size: 0.76rem;
+  }
+  .nav-tab-btn .tab-en {
+    font-size: 0.62rem;
+  }
   .venue-grid {
     grid-template-columns: 1fr;
   }
