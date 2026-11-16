@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261116e" />
+  <link rel="stylesheet" href="styles.css?v=20261116f" />
 </head>
 <body data-lang="dual">
   <!-- Traditional Higashi (East Crimson) / Gold / Nishi (West Indigo) Noren Stripe -->
@@ -211,10 +211,13 @@
             />
           </div>
           <div class="filter-pills" id="rikishi-rank-pills">
-            <button type="button" class="filter-pill active" data-rank="all">All Ranks 全番付 (22)</button>
+            <button type="button" class="filter-pill active" data-rank="all">All Ranks 全番付</button>
             <button type="button" class="filter-pill" data-rank="Yokozuna-Ozeki">Yokozuna &amp; Ozeki 横綱・大関</button>
             <button type="button" class="filter-pill" data-rank="Sanyaku">Sekiwake &amp; Komusubi 関脇・小結</button>
             <button type="button" class="filter-pill" data-rank="Maegashira">Maegashira 前頭</button>
+            <button type="button" class="filter-pill" data-rank="Juryo">Juryo 十両</button>
+            <button type="button" class="filter-pill" data-rank="Makushita">Makushita 幕下</button>
+            <button type="button" class="filter-pill" data-rank="Lower">Sandanme–Jonokuchi 三段目〜序ノ口</button>
             <button type="button" class="filter-pill" data-rank="Fuji">富士 'Fuji' Lineage</button>
           </div>
         </div>
@@ -437,8 +440,8 @@
     </div>
   </div>
 
-  <script src="data/sumoData.js?v=20261116e"></script>
-  <script src="app.js?v=20261116e"></script>
+  <script src="data/sumoData.js?v=20261116f"></script>
+  <script src="app.js?v=20261116f"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

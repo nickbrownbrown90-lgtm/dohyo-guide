@@ -310,52 +310,323 @@
   }
 
   /* ========================================================================
-     Live sumo-api.com Sync with Instant Offline Fallback
+     Live sumo-api.com Sync (Torikumi + All-Division Banzuke + Rikishi Stats)
      ======================================================================== */
+  const KANJI_CHAR_GLOSS = {
+    "大": ["Dai / Ō", "Great / Grand"],
+    "小": ["Ko / Shō", "Small / Little"],
+    "若": ["Waka", "Young / Youthful"],
+    "貴": ["Taka", "Noble / Precious"],
+    "隆": ["Taka / Ryū", "Prosperous / Elevated"],
+    "豊": ["Hō / Yutaka", "Abundant / Bountiful"],
+    "昇": ["Shō", "Rising / Ascending"],
+    "龍": ["Ryū / Tatsu", "Dragon"],
+    "富士": ["Fuji", "Mount Fuji"],
+    "富": ["Fu / Tomi", "Abundant / Wealth"],
+    "士": ["Ji / Shi", "Warrior / Samurai"],
+    "琴": ["Koto", "Japanese Harp (Sadogatake)"],
+    "桜": ["Sakura", "Cherry Blossom"],
+    "櫻": ["Zakura", "Cherry Blossom"],
+    "海": ["Umi / Mi", "Sea / Ocean"],
+    "山": ["Yama / Zan", "Mountain"],
+    "川": ["Kawa / Gawa", "River"],
+    "里": ["Sato", "Village / Homeland"],
+    "風": ["Kaze / Fū", "Wind"],
+    "錦": ["Nishiki", "Brocade"],
+    "青": ["Ao / Sei", "Blue / Azure"],
+    "紅": ["Kō / Kurenai", "Crimson"],
+    "白": ["Haku / Shiro", "White"],
+    "黒": ["Kuro", "Black"],
+    "金": ["Kin / Kane", "Gold"],
+    "銀": ["Gin", "Silver"],
+    "玉": ["Tama", "Jewel / Jade"],
+    "鷲": ["Washi", "Eagle"],
+    "鵬": ["Hō", "Mythical Giant Bird"],
+    "王": ["Ō", "King / Monarch"],
+    "朝": ["Asa", "Morning (Takasago)"],
+    "千代": ["Chiyo", "Thousand Generations (Kokonoe)"],
+    "千": ["Chi", "Thousand"],
+    "代": ["Yo / Dai", "Generation / Era"],
+    "北": ["Kita / Hoku", "North"],
+    "東": ["Higashi / Azuma", "East"],
+    "西": ["Nishi", "West"],
+    "南": ["Minami / Nan", "South"],
+    "翔": ["Shō", "Soar / Fly"],
+    "勝": ["Shō / Katsu", "Victory"],
+    "峰": ["Hō / Mine", "Mountain Peak"],
+    "豪": ["Gō", "Mighty / Heroic"],
+    "輝": ["Teru / Ki", "Radiance / Shine"],
+    "光": ["Hikari / Kō", "Light"],
+    "天": ["Ten / Ama", "Heaven / Sky"],
+    "وم": ["", ""],
+    "ノ": ["no", "Possessive particle"],
+    "の": ["no", "Possessive particle"],
+    "乃": ["no", "Classical possessive particle"]
+  };
+
+  function rankJpFromEn(rankEn) {
+    if (!rankEn) return "本場所";
+    const m = String(rankEn).match(
+      /(Yokozuna|Ozeki|Sekiwake|Komusubi|Maegashira|Juryo|Makushita|Sandanme|Jonidan|Jonokuchi)\s*(\d+)?\s*(East|West)?/i
+    );
+    if (!m) return rankEn;
+    const tier = m[1];
+    const num = m[2] || "";
+    const side = m[3] || "";
+    const sideJp = side.toLowerCase() === "west" ? "西" : side.toLowerCase() === "east" ? "東" : "";
+    const map = {
+      yokozuna: "横綱",
+      ozeki: "大関",
+      sekiwake: "関脇",
+      komusubi: "小結",
+      maegashira: "前頭",
+      juryo: "十両",
+      makushita: "幕下",
+      sandanme: "三段目",
+      jonidan: "序二段",
+      jonokuchi: "序ノ口"
+    };
+    const tierJp = map[tier.toLowerCase()] || tier;
+    if (["yokozuna", "ozeki", "sekiwake", "komusubi"].includes(tier.toLowerCase())) {
+      return `${sideJp}${tierJp}`;
+    }
+    return `${sideJp}${tierJp}${num ? num + "枚目" : ""}`;
+  }
+
+  function rankTierFromEn(rankEn) {
+    const s = String(rankEn || "");
+    for (const t of [
+      "Yokozuna",
+      "Ozeki",
+      "Sekiwake",
+      "Komusubi",
+      "Maegashira",
+      "Juryo",
+      "Makushita",
+      "Sandanme",
+      "Jonidan",
+      "Jonokuchi"
+    ]) {
+      if (s.includes(t)) return t;
+    }
+    return "Maegashira";
+  }
+
+  function parseShikonaJp(rawJp, fallbackRomaji) {
+    if (!rawJp) {
+      return { kanji: fallbackRomaji || "力士", furigana: (fallbackRomaji || "").toLowerCase(), given: "" };
+    }
+    // Lower-division banzuke often formats as "納谷(なや)" or "千代翔馬　富士雄"
+    const parenMatch = rawJp.match(/^([^\(（]+?)[\(（]([^\)）]+)[\)）]/);
+    if (parenMatch) {
+      return {
+        kanji: parenMatch[1].trim(),
+        furigana: parenMatch[2].trim(),
+        given: ""
+      };
+    }
+    const parts = rawJp.replace(/\u3000/g, " ").trim().split(/\s+/);
+    return {
+      kanji: parts[0] || fallbackRomaji || "力士",
+      furigana: (fallbackRomaji || "").toLowerCase(),
+      given: parts[1] || ""
+    };
+  }
+
+  function buildAutoKanjiBreakdown(kanjiStr, heyaEn) {
+    const chars = [...(kanjiStr || "")].filter((c) => c.trim());
+    return chars.map((ch) => {
+      const gloss = KANJI_CHAR_GLOSS[ch];
+      return {
+        char: ch,
+        reading: gloss ? gloss[0] : ch,
+        meaningEn: gloss ? gloss[1] : "Shikona Kanji",
+        noteEn: heyaEn && heyaEn !== "JSA" ? `${heyaEn} stable ring name character` : "Traditional sumo ring name character"
+      };
+    });
+  }
+
+  let bulkRikishiPromise = null;
+  const liveBanzukeByBasho = new Map(); // bashoApiId -> Map(rikishiId -> banzukeEntry)
+
+  async function ensureRikishiAndBanzukeLoaded(bashoApiId) {
+    // 1. Fetch all 596 active Rikishi physical profiles once per session
+    if (!bulkRikishiPromise) {
+      bulkRikishiPromise = fetch("https://sumo-api.com/api/rikishis?limit=1000")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data && Array.isArray(data.records)) {
+            data.records.forEach((rec) => {
+              upsertRikishiFromApi(rec, null);
+            });
+          }
+          return data;
+        })
+        .catch(() => null);
+    }
+
+    // 2. Fetch all 6 division banzuke (wins, losses, absences, shikonaJp, rank) for this basho
+    if (!liveBanzukeByBasho.has(bashoApiId)) {
+      const bMap = new Map();
+      liveBanzukeByBasho.set(bashoApiId, bMap);
+      await Promise.allSettled(
+        DIVISIONS.map(async (divMeta) => {
+          const res = await fetch(`https://sumo-api.com/api/basho/${bashoApiId}/banzuke/${divMeta.key}`);
+          if (!res.ok) return;
+          const json = await res.json();
+          ["east", "west"].forEach((sideKey) => {
+            if (Array.isArray(json[sideKey])) {
+              json[sideKey].forEach((entry) => {
+                if (entry && entry.rikishiID) {
+                  bMap.set(entry.rikishiID, { ...entry, division: divMeta.key });
+                }
+              });
+            }
+          });
+        })
+      );
+    }
+
+    await bulkRikishiPromise;
+    const bMap = liveBanzukeByBasho.get(bashoApiId);
+    if (bMap && bMap.size > 0) {
+      bMap.forEach((bEntry) => {
+        upsertRikishiFromApi(null, bEntry);
+      });
+    }
+  }
+
+  function upsertRikishiFromApi(apiRec, banzukeEntry) {
+    const apiId = (apiRec && apiRec.id) || (banzukeEntry && banzukeEntry.rikishiID);
+    const shikonaEn = (banzukeEntry && banzukeEntry.shikonaEn) || (apiRec && apiRec.shikonaEn) || "";
+    const norm = shikonaEn.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    let existing = (apiId && rikishiByApiId.get(apiId)) || (norm && rikishiByRomaji.get(norm));
+
+    const rawJp = (banzukeEntry && banzukeEntry.shikonaJp) || (apiRec && apiRec.shikonaJp) || "";
+    const parsedJp = parseShikonaJp(rawJp, shikonaEn);
+    const rankEn = (banzukeEntry && banzukeEntry.rank) || (apiRec && apiRec.currentRank) || (existing && existing.rankEn) || "Grand Sumo";
+    const rankJp = rankJpFromEn(rankEn);
+    const rankTier = rankTierFromEn(rankEn);
+    const side = (banzukeEntry && banzukeEntry.side) || (rankEn.includes("West") ? "West" : "East");
+
+    let recordStr = existing ? existing.currentRecord : "0-0";
+    if (banzukeEntry && typeof banzukeEntry.wins === "number" && typeof banzukeEntry.losses === "number") {
+      recordStr =
+        `${banzukeEntry.wins}-${banzukeEntry.losses}` +
+        (banzukeEntry.absences ? `-${banzukeEntry.absences}` : "");
+    }
+
+    if (existing) {
+      if (apiId) existing.apiId = apiId;
+      if (parsedJp.kanji && (existing.shikonaKanji === existing.romaji || !existing.shikonaKanji)) {
+        existing.shikonaKanji = parsedJp.kanji;
+        existing.rubyHtml = parsedJp.kanji;
+      }
+      if (parsedJp.furigana && (!existing.furigana || existing.furigana === existing.romaji)) {
+        existing.furigana = parsedJp.furigana;
+      }
+      if (parsedJp.given && !existing.givenName) {
+        existing.givenName = parsedJp.given;
+      }
+      if (banzukeEntry && banzukeEntry.rank) {
+        existing.rankEn = rankEn;
+        existing.rankJp = rankJp;
+        existing.rankTier = rankTier;
+        existing.side = side;
+      }
+      if (banzukeEntry && typeof banzukeEntry.wins === "number") {
+        existing.currentRecord = recordStr;
+        if (existing.careerRecord === "Live API" || existing.careerRecord.startsWith("2026 Kyushu:")) {
+          existing.careerRecord = `Current Basho: ${recordStr}`;
+        }
+      }
+      if (apiRec) {
+        if (apiRec.height) existing.heightCm = Math.round(apiRec.height);
+        if (apiRec.weight) existing.weightKg = Math.round(apiRec.weight);
+        if (apiRec.heya) {
+          existing.heyaEn = apiRec.heya;
+          existing.heyaJp = `${apiRec.heya}部屋`;
+        }
+        if (apiRec.shusshin) {
+          existing.originEn = apiRec.shusshin;
+          existing.originJp = apiRec.shusshin;
+        }
+        if (apiRec.debut) {
+          existing.debut = apiRec.debut;
+        }
+      }
+      if (!existing.kanjiBreakdown || existing.kanjiBreakdown.length === 0) {
+        existing.kanjiBreakdown = buildAutoKanjiBreakdown(existing.shikonaKanji, existing.heyaEn);
+      }
+      registerRikishi(existing);
+      return existing;
+    }
+
+    const heyaEn = (apiRec && apiRec.heya) || "Grand Sumo";
+    const originEn = (apiRec && apiRec.shusshin) || "Japan";
+    const heightCm = apiRec && apiRec.height ? Math.round(apiRec.height) : 180;
+    const weightKg = apiRec && apiRec.weight ? Math.round(apiRec.weight) : 135;
+    const slug = (norm || `rikishi-${apiId || Math.random()}`).replace(/[^a-z0-9]/g, "") + (apiId ? `-${apiId}` : "");
+
+    const newProfile = {
+      id: slug,
+      apiId: apiId || 0,
+      shikonaKanji: parsedJp.kanji,
+      furigana: parsedJp.furigana,
+      rubyHtml: parsedJp.kanji,
+      romaji: shikonaEn || "Rikishi",
+      givenName: parsedJp.given,
+      rankEn,
+      rankJp,
+      rankTier,
+      side,
+      heyaEn,
+      heyaJp: `${heyaEn}部屋`,
+      originEn,
+      originJp: originEn,
+      heightCm,
+      weightKg,
+      styleCode: `${rankTier} • ${heyaEn}`,
+      styleEn: `${heyaEn} stable competitor (${heightCm}cm, ${weightKg}kg)`,
+      styleJp: `${heyaEn}部屋所属（${heightCm}cm・${weightKg}kg）`,
+      signatureMoves: ["Yorikiri", "Oshidashi"],
+      makuuchiYusho: 0,
+      sansho: rankTier,
+      kinboshi: 0,
+      careerRecord: `Current Basho: ${recordStr}`,
+      currentRecord: recordStr,
+      literalMeaningEn: `${parsedJp.kanji} (${shikonaEn})`,
+      literalMeaningJp: `${parsedJp.kanji}（${heyaEn}部屋）`,
+      kanjiBreakdown: buildAutoKanjiBreakdown(parsedJp.kanji, heyaEn),
+      storyEn: `${shikonaEn} (${parsedJp.kanji}) represents ${heyaEn} stable from ${originEn}, standing ${heightCm}cm and ${weightKg}kg with a ${recordStr} tournament record.`,
+      storyJp: `${heyaEn}部屋所属、${originEn}出身。体格は${heightCm}cm・${weightKg}kg、今場所の星取は${recordStr}。`
+    };
+    DATA.rikishi.push(newProfile);
+    registerRikishi(newProfile);
+    return newProfile;
+  }
+
   function resolveOrCreateRikishi(apiId, shikonaRaw, rankRaw, side) {
-    if (apiId && rikishiByApiId.has(apiId)) return rikishiByApiId.get(apiId);
+    if (apiId && rikishiByApiId.has(apiId)) {
+      const found = rikishiByApiId.get(apiId);
+      if (rankRaw && (!found.rankEn || found.rankEn === "Grand Sumo")) {
+        found.rankEn = rankRaw;
+        found.rankJp = rankJpFromEn(rankRaw);
+        found.rankTier = rankTierFromEn(rankRaw);
+      }
+      return found;
+    }
     const norm = (shikonaRaw || "")
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
     if (norm && rikishiByRomaji.has(norm)) return rikishiByRomaji.get(norm);
 
-    const slug = (norm || `rikishi-${apiId || Math.random()}`).replace(/[^a-z0-9]/g, "");
-    const dynamicProfile = {
-      id: slug,
-      apiId: apiId || 0,
-      shikonaKanji: shikonaRaw || "力士",
-      furigana: shikonaRaw || "",
-      rubyHtml: shikonaRaw || "力士",
-      romaji: shikonaRaw || "Rikishi",
-      givenName: "",
-      rankEn: rankRaw || "Makuuchi",
-      rankJp: rankRaw || "幕内",
-      rankTier: "Maegashira",
-      side: side || "East",
-      heyaEn: "JSA",
-      heyaJp: "日本相撲協会",
-      originEn: "Grand Sumo",
-      originJp: "大相撲",
-      heightCm: 185,
-      weightKg: 150,
-      styleCode: "Makuuchi",
-      styleEn: "Grand Sumo top-division competitor",
-      styleJp: "幕内力士",
-      signatureMoves: ["Yorikiri", "Oshidashi"],
-      makuuchiYusho: 0,
-      sansho: "Active",
-      kinboshi: 0,
-      careerRecord: "Live API",
-      currentRecord: "Live",
-      literalMeaningEn: shikonaRaw || "Rikishi",
-      literalMeaningJp: shikonaRaw || "力士",
-      kanjiBreakdown: [],
-      storyEn: `${shikonaRaw} (${rankRaw}) competing in Grand Sumo.`,
-      storyJp: `${shikonaRaw}（${rankRaw}）の取組。`
-    };
-    registerRikishi(dynamicProfile);
-    return dynamicProfile;
+    return upsertRikishiFromApi(
+      { id: apiId, shikonaEn: shikonaRaw, currentRank: rankRaw },
+      { rikishiID: apiId, shikonaEn: shikonaRaw, rank: rankRaw, side }
+    );
   }
 
   function updateDivisionPills() {
@@ -387,26 +658,29 @@
     const dateStr = getDayDateStr(basho, state.selectedDay);
 
     dot.classList.add("syncing");
-    text.textContent = `Syncing all 6 divisions (${dateStr} • Day ${state.selectedDay})...`;
+    text.textContent = `Syncing all 6 divisions & stats (${dateStr} • Day ${state.selectedDay})...`;
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 7000);
+      const timeout = setTimeout(() => controller.abort(), 8500);
 
       const curatedByBoutNo = new Map();
       if (state.selectedBashoId === "202611" && state.selectedDay === 9) {
         DATA.defaultTorikumi.forEach((b) => curatedByBoutNo.set(b.boutNo, b));
       }
 
-      const results = await Promise.allSettled(
-        DIVISIONS.map(async (divMeta) => {
-          const url = `https://sumo-api.com/api/basho/${basho.apiId}/torikumi/${divMeta.key}/${state.selectedDay}`;
-          const res = await fetch(url, { signal: controller.signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const json = await res.json();
-          return { divMeta, torikumi: (json && Array.isArray(json.torikumi)) ? json.torikumi : [] };
-        })
-      );
+      const [, results] = await Promise.all([
+        ensureRikishiAndBanzukeLoaded(basho.apiId),
+        Promise.allSettled(
+          DIVISIONS.map(async (divMeta) => {
+            const url = `https://sumo-api.com/api/basho/${basho.apiId}/torikumi/${divMeta.key}/${state.selectedDay}`;
+            const res = await fetch(url, { signal: controller.signal });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            return { divMeta, torikumi: json && Array.isArray(json.torikumi) ? json.torikumi : [] };
+          })
+        )
+      ]);
       clearTimeout(timeout);
 
       const allMapped = [];
@@ -429,27 +703,50 @@
               ? "West"
               : null;
 
+          const eRec = eastMatch.currentRecord || "";
+          const wRec = westMatch.currentRecord || "";
+
           allMapped.push({
             division: divMeta.key,
             divisionJp: divMeta.jp,
             divisionOrder: divMeta.order,
             boutNo: bno,
-            boutTitleEn: curated ? curated.boutTitleEn : `${divMeta.key} Bout #${bno}: ${eastMatch.romaji} vs. ${westMatch.romaji}`,
-            boutTitleJp: curated ? curated.boutTitleJp : `${divMeta.jp}第${bno}番：${eastMatch.shikonaKanji} vs ${westMatch.shikonaKanji}`,
+            boutTitleEn: curated
+              ? curated.boutTitleEn
+              : `${divMeta.key} Bout #${bno}: ${eastMatch.romaji} (${eRec}) vs. ${westMatch.romaji} (${wRec})`,
+            boutTitleJp: curated
+              ? curated.boutTitleJp
+              : `${divMeta.jp}第${bno}番：${eastMatch.shikonaKanji}（${eRec}）vs ${westMatch.shikonaKanji}（${wRec}）`,
             approxTime: curated ? curated.approxTime : approxTime,
-            isSanyaku: curated ? curated.isSanyaku : (divMeta.key === "Makuuchi" && bno >= 15),
-            stakesTagEn: curated ? curated.stakesTagEn : `${item.eastRank || eastMatch.rankEn} vs. ${item.westRank || westMatch.rankEn}`,
-            stakesTagJp: curated ? curated.stakesTagJp : `${item.eastRank || eastMatch.rankJp} vs ${item.westRank || westMatch.rankJp}`,
+            isSanyaku: curated ? curated.isSanyaku : divMeta.key === "Makuuchi" && bno >= 15,
+            stakesTagEn: curated
+              ? curated.stakesTagEn
+              : `${item.eastRank || eastMatch.rankEn} (${eRec}) vs. ${item.westRank || westMatch.rankEn} (${wRec})`,
+            stakesTagJp: curated
+              ? curated.stakesTagJp
+              : `${eastMatch.rankJp}（${eRec}）vs ${westMatch.rankJp}（${wRec}）`,
             eastId: eastMatch.id,
             westId: westMatch.id,
             h2hEast: curated ? curated.h2hEast : 1,
             h2hWest: curated ? curated.h2hWest : 1,
-            lastMeetingEn: item.kimarite ? `Result: ${item.kimarite}` : curated ? curated.lastMeetingEn : `${dateStr} • Day ${state.selectedDay}`,
-            lastMeetingJp: item.kimarite ? `決まり手：${item.kimarite}` : curated ? curated.lastMeetingJp : `${dateStr}（${state.selectedDay}日目）`,
+            lastMeetingEn: item.kimarite
+              ? `Result: ${item.kimarite}`
+              : curated
+              ? curated.lastMeetingEn
+              : `${dateStr} • Day ${state.selectedDay}`,
+            lastMeetingJp: item.kimarite
+              ? `決まり手：${item.kimarite}`
+              : curated
+              ? curated.lastMeetingJp
+              : `${dateStr}（${state.selectedDay}日目）`,
             winnerSide,
             kimariteId: item.kimarite ? item.kimarite.toLowerCase() : null,
-            storylineEn: curated ? curated.storylineEn : `${divMeta.key} division matchup: ${eastMatch.romaji} (${item.eastRank || eastMatch.rankEn}) vs. ${westMatch.romaji} (${item.westRank || westMatch.rankEn}).`,
-            storylineJp: curated ? curated.storylineJp : `${divMeta.jp}の取組：${eastMatch.shikonaKanji} 対 ${westMatch.shikonaKanji}。`
+            storylineEn: curated
+              ? curated.storylineEn
+              : `${divMeta.key} matchup: ${eastMatch.romaji} (${eRec}, ${eastMatch.heyaEn}, ${eastMatch.heightCm}cm/${eastMatch.weightKg}kg, from ${eastMatch.originEn}) faces ${westMatch.romaji} (${wRec}, ${westMatch.heyaEn}, ${westMatch.heightCm}cm/${westMatch.weightKg}kg, from ${westMatch.originEn}).`,
+            storylineJp: curated
+              ? curated.storylineJp
+              : `${divMeta.jp}取組：${eastMatch.shikonaKanji}（${eRec}・${eastMatch.heyaJp}・${eastMatch.heightCm}cm/${eastMatch.weightKg}kg）と${westMatch.shikonaKanji}（${wRec}・${westMatch.heyaJp}・${westMatch.heightCm}cm/${westMatch.weightKg}kg）が対戦。`
           });
         });
       });
@@ -457,9 +754,10 @@
       if (allMapped.length > 0) {
         state.boutsForCurrentSelection = allMapped;
         dot.classList.remove("syncing");
-        text.textContent = `Live API Synced • ${dateStr} (${allMapped.length} Bouts across 6 Divisions)`;
+        text.textContent = `Live API Synced • ${dateStr} (${allMapped.length} Bouts + All 6 Divisions Stats)`;
         updateDivisionPills();
         renderTorikumiList();
+        renderRikishiDirectory();
         renderPredictionsTab();
         return;
       }
@@ -811,6 +1109,12 @@
         if (r.rankTier !== "Sekiwake" && r.rankTier !== "Komusubi") return false;
       } else if (state.rikishiRankFilter === "Maegashira") {
         if (r.rankTier !== "Maegashira") return false;
+      } else if (state.rikishiRankFilter === "Juryo") {
+        if (r.rankTier !== "Juryo") return false;
+      } else if (state.rikishiRankFilter === "Makushita") {
+        if (r.rankTier !== "Makushita") return false;
+      } else if (state.rikishiRankFilter === "Lower") {
+        if (r.rankTier !== "Sandanme" && r.rankTier !== "Jonidan" && r.rankTier !== "Jonokuchi") return false;
       } else if (state.rikishiRankFilter === "Fuji") {
         if (!r.shikonaKanji.includes("富士")) return false;
       }
@@ -842,7 +1146,9 @@
       return true;
     });
 
-    container.innerHTML = filtered
+    const visibleList = query || state.rikishiRankFilter !== "all" ? filtered.slice(0, 120) : filtered.slice(0, 72);
+
+    container.innerHTML = visibleList
       .map((r) => {
         const isStarred = state.starredRikishi.has(r.id);
         return `
@@ -1816,7 +2122,7 @@
           ${r.rubyHtml} <span style="font-family:var(--font-sans); font-size:1.15rem; color:var(--text-secondary);">${r.romaji}</span>
         </h2>
         <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:0.75rem;">
-          Given Name: ${r.givenName} • Stable: ${r.heyaEn} (${r.heyaJp}) • Origin: ${r.originEn} (${r.originJp})
+          ${r.givenName ? `Given Name: ${r.givenName} • ` : ""}Stable: ${r.heyaEn} (${r.heyaJp}) • Origin: ${r.originEn} • Build: <strong>${r.heightCm}cm / ${r.weightKg}kg</strong>
         </p>
       </div>
 
@@ -1856,20 +2162,40 @@
         </div>
         <div class="meta-item">
           <span class="meta-k">Career Record (通算成績)</span>
-          <span class="meta-v">${r.careerRecord}</span>
+          <span class="meta-v" id="modal-career-record">${r.careerRecord}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-k">Fighting Style (得意な型)</span>
-          <span class="meta-v">${r.styleEn} (${r.styleJp})</span>
+          <span class="meta-k">Build &amp; Style (体格・型)</span>
+          <span class="meta-v">${r.heightCm}cm • ${r.weightKg}kg — ${r.styleEn}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-k">Yūshō &amp; Special Prizes (三賞・金星)</span>
-          <span class="meta-v">🏆 ${r.makuuchiYusho} Yūshō • Sanshō: ${r.sansho} • Kinboshi: ${r.kinboshi}</span>
+          <span class="meta-k">Yūshō &amp; Achievements (優勝・三賞)</span>
+          <span class="meta-v" id="modal-career-yusho">🏆 ${r.makuuchiYusho} Yūshō • ${r.sansho}</span>
         </div>
       </div>
     `;
 
     backdrop.classList.add("open");
+
+    if (r.apiId) {
+      fetch(`https://sumo-api.com/api/rikishi/${r.apiId}/stats`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((stats) => {
+          if (!stats || typeof stats.totalWins !== "number") return;
+          const careerStr = `${stats.totalWins}-${stats.totalLosses}${stats.totalAbsences ? `-${stats.totalAbsences}` : ""} (${stats.basho || 0} basho)`;
+          r.careerRecord = careerStr;
+          const careerEl = document.getElementById("modal-career-record");
+          if (careerEl) careerEl.textContent = careerStr;
+
+          if (typeof stats.yusho === "number") {
+            const yushoEl = document.getElementById("modal-career-yusho");
+            if (yushoEl) {
+              yushoEl.textContent = `🏆 ${stats.yusho} Total Yūshō (${r.makuuchiYusho} Makuuchi) • ${stats.totalMatches} Career Bouts`;
+            }
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   function closeModal() {
