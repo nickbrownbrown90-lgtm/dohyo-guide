@@ -28,15 +28,40 @@
     "#4338CA"
   ];
 
+  function createDefault4Players() {
+    return [1, 2, 3, 4].map((num, idx) => ({
+      id: `p${num}`,
+      name: `Player ${num}`,
+      color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
+      picks: {},
+      tiebreakers: {}
+    }));
+  }
+
   function loadContestState() {
     try {
       const raw = localStorage.getItem("dohyo_contest_v1");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.players) && parsed.players.length > 0) {
+          const players = parsed.players.slice();
+          // Upgrade legacy 2-player default to 4 players automatically while keeping existing picks
+          if (!parsed.fourPlayerReady) {
+            while (players.length < 4) {
+              const nextNum = players.length + 1;
+              players.push({
+                id: `p${nextNum}_` + Math.random().toString(36).slice(2, 5),
+                name: `Player ${nextNum}`,
+                color: PLAYER_COLORS[(nextNum - 1) % PLAYER_COLORS.length],
+                picks: {},
+                tiebreakers: {}
+              });
+            }
+          }
           return {
-            players: parsed.players,
-            activePlayerId: parsed.activePlayerId || parsed.players[0].id,
+            fourPlayerReady: true,
+            players,
+            activePlayerId: parsed.activePlayerId || players[0].id,
             contestScope: parsed.contestScope || "Makuuchi",
             actualMusubiKensho: parsed.actualMusubiKensho || {}
           };
@@ -44,22 +69,8 @@
       }
     } catch (_) {}
     return {
-      players: [
-        {
-          id: "p1",
-          name: "Player 1",
-          color: PLAYER_COLORS[0],
-          picks: {},
-          tiebreakers: {}
-        },
-        {
-          id: "p2",
-          name: "Player 2",
-          color: PLAYER_COLORS[1],
-          picks: {},
-          tiebreakers: {}
-        }
-      ],
+      fourPlayerReady: true,
+      players: createDefault4Players(),
       activePlayerId: "p1",
       contestScope: "Makuuchi",
       actualMusubiKensho: {}
@@ -1085,7 +1096,7 @@
                   </button>
                 </div>
                 <button type="button" class="inspect-btn" data-open-tab="predictions">
-                  🏆 Open Leaderboard &amp; Share Picks →
+                  🏆 Open 4-Player Leaderboard &amp; Picks →
                 </button>
               </div>
             </div>
@@ -1774,11 +1785,8 @@
 
     bar.innerHTML = `
       <div class="picker-bar-left">
-        <span class="picker-bar-label">🎯 Active Picker (予想者):</span>
+        <span class="picker-bar-label">🎯 Pass-and-Play Picker (予想者):</span>
         ${playerPillsHtml}
-        <button type="button" class="inspect-btn" data-contest-add-player="1" title="Add another friend to the contest">
-          + Add Friend
-        </button>
       </div>
       <div class="picker-bar-right">
         ${
@@ -1789,7 +1797,7 @@
             : ""
         }
         <button type="button" class="action-btn" data-open-tab="predictions">
-          🏆 Tab 5: Leaderboard &amp; Share
+          🏆 Tab 5: 4-Player Contest
         </button>
       </div>
     `;
@@ -1803,7 +1811,7 @@
     const dateStr = getDayDateStr(basho, state.selectedDay);
     const dayBadge = document.getElementById("contest-day-badge");
     if (dayBadge) {
-      dayBadge.innerHTML = `<span>🏮 ${basho.city} • ${dateStr} • Day ${state.selectedDay}</span>`;
+      dayBadge.innerHTML = `<span>🏮 ${basho.city} • ${dateStr} • Day ${state.selectedDay} (Saved on Device)</span>`;
     }
 
     const activePlayer = getActiveContestPlayer();
@@ -1824,6 +1832,52 @@
     const musubiEast = musubiBout ? rikishiById.get(musubiBout.eastId) : null;
     const musubiWest = musubiBout ? rikishiById.get(musubiBout.westId) : null;
 
+    const rosterSlotsHtml = state.contest.players
+      .map((p, idx) => {
+        const row = standings.find((r) => r.player.id === p.id);
+        const pts = row ? row.correct : 0;
+        const picked = row ? row.pickedCount : 0;
+        const total = row ? row.totalBouts : 0;
+        const isActive = activePlayer && activePlayer.id === p.id;
+        return `
+          <div class="roster-slot-card ${isActive ? "active-slot" : ""}" data-roster-slot="${p.id}">
+            <button
+              type="button"
+              class="roster-slot-badge"
+              style="background:${p.color};"
+              data-select-player="${p.id}"
+              title="Tap to make P${idx + 1} the Active Pass-and-Play Picker"
+            >
+              P${idx + 1}
+            </button>
+            <input
+              type="text"
+              class="roster-name-input"
+              data-player-name-input="${p.id}"
+              value="${escapeHtml(p.name)}"
+              placeholder="Player ${idx + 1} Name"
+              maxlength="22"
+              aria-label="Player ${idx + 1} Name"
+            />
+            <span class="roster-slot-score" data-roster-score="${p.id}" title="Correct Picks • Picked / Total">
+              ${pts}pt (${picked}/${total})
+            </span>
+            ${
+              state.contest.players.length > 2
+                ? `<button
+                    type="button"
+                    class="inspect-btn"
+                    data-remove-player="${p.id}"
+                    title="Remove ${escapeHtml(p.name)}"
+                    style="padding:0.15rem 0.38rem; font-size:0.68rem;"
+                  >✕</button>`
+                : ""
+            }
+          </div>
+        `;
+      })
+      .join("");
+
     const leaderboardHtml = standings
       .map((row, idx) => {
         const isFirst = idx === 0;
@@ -1836,7 +1890,7 @@
               <div class="lb-name-line">
                 <span style="font-family:var(--font-mono); font-size:0.82rem;">#${idx + 1}</span>
                 <span class="player-dot" style="background:${row.player.color};"></span>
-                <span>${escapeHtml(row.player.name)}</span>
+                <span data-player-name-mirror="${row.player.id}">${escapeHtml(row.player.name)}</span>
                 ${isFirst ? `<span class="lb-badge-yokozuna">👑 YOKOZUNA LEADER</span>` : ""}
                 ${isLastPays ? `<span class="lb-badge-pays">💸 PAYS FOR EVERYTHING / 全額ゴチ決定枠!</span>` : ""}
               </div>
@@ -1877,40 +1931,117 @@
         const sim = state.simulatedWinners[bKey];
         const effectiveWinner = sim ? sim.side : bout.winnerSide;
 
+        const matrixCellsHtml = state.contest.players
+          .map((p) => {
+            const pPick = p.picks ? p.picks[bKey] : null;
+            let statusClass = "";
+            let statusIcon = "";
+            if (effectiveWinner && pPick) {
+              if (pPick === effectiveWinner) {
+                statusClass = "is-correct";
+                statusIcon = "✓";
+              } else {
+                statusClass = "is-wrong";
+                statusIcon = "✗";
+              }
+            }
+            return `
+              <div class="matrix-player-cell ${statusClass}">
+                <span class="matrix-player-name" title="${escapeHtml(p.name)}">
+                  <span class="player-dot" style="background:${p.color};"></span>
+                  <span data-player-name-mirror="${p.id}">${escapeHtml(p.name)}</span>
+                  ${statusIcon ? `<strong style="font-size:0.68rem;">${statusIcon}</strong>` : ""}
+                </span>
+                <div class="matrix-ew-btns">
+                  <button
+                    type="button"
+                    class="matrix-ew-btn ${pPick === "East" ? "selected-east" : ""}"
+                    data-pick-player="${p.id}"
+                    data-pick-bout="${bKey}"
+                    data-pick-side="East"
+                    title="${escapeHtml(p.name)} picks East: ${east.shikonaKanji} (${east.romaji})"
+                  >東E</button>
+                  <button
+                    type="button"
+                    class="matrix-ew-btn ${pPick === "West" ? "selected-west" : ""}"
+                    data-pick-player="${p.id}"
+                    data-pick-bout="${bKey}"
+                    data-pick-side="West"
+                    title="${escapeHtml(p.name)} picks West: ${west.shikonaKanji} (${west.romaji})"
+                  >西W</button>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
         return `
           <div class="rapid-pick-row">
-            <div class="rapid-pick-num">
-              ${divJp} #${bout.boutNo}
-              ${effectiveWinner ? `<div style="font-size:0.65rem; color:var(--gold-primary);">Win: ${effectiveWinner}</div>` : ""}
+            <div class="rapid-pick-top">
+              <div class="rapid-pick-num">
+                ${divJp} #${bout.boutNo}
+                ${effectiveWinner ? `<div style="font-size:0.65rem; color:var(--gold-primary);">Win: ${effectiveWinner}</div>` : ""}
+              </div>
+              <button
+                type="button"
+                class="rapid-choice-btn ${pick === "East" ? "selected-east" : ""}"
+                data-pick-bout="${bKey}"
+                data-pick-side="East"
+              >
+                <span>東 ${east.shikonaKanji} (${east.romaji})</span>
+                <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${east.currentRecord}</span>
+              </button>
+              <span style="font-size:0.7rem; font-weight:800; color:var(--text-muted); text-align:center;">VS</span>
+              <button
+                type="button"
+                class="rapid-choice-btn ${pick === "West" ? "selected-west" : ""}"
+                data-pick-bout="${bKey}"
+                data-pick-side="West"
+              >
+                <span>西 ${west.shikonaKanji} (${west.romaji})</span>
+                <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${west.currentRecord}</span>
+              </button>
             </div>
-            <button
-              type="button"
-              class="rapid-choice-btn ${pick === "East" ? "selected-east" : ""}"
-              data-pick-bout="${bKey}"
-              data-pick-side="East"
-            >
-              <span>東 ${east.shikonaKanji} (${east.romaji})</span>
-              <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${east.currentRecord}</span>
-            </button>
-            <span style="font-size:0.7rem; font-weight:800; color:var(--text-muted); text-align:center;">VS</span>
-            <button
-              type="button"
-              class="rapid-choice-btn ${pick === "West" ? "selected-west" : ""}"
-              data-pick-bout="${bKey}"
-              data-pick-side="West"
-            >
-              <span>西 ${west.shikonaKanji} (${west.romaji})</span>
-              <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${west.currentRecord}</span>
-            </button>
+            <div class="matrix-4p-strip">
+              ${matrixCellsHtml}
+            </div>
           </div>
         `;
       })
       .join("");
 
     container.innerHTML = `
-      <!-- Contest Scope & Player Switcher Controls -->
-      <div class="torikumi-controls">
-        <div class="controls-top-row">
+      <!-- 1. 4-Player Roster & Contest Scope Card -->
+      <div class="contest-card" style="margin-bottom:1rem;">
+        <h3>
+          <span>👥 4-Player Roster &amp; Contest Setup (4人のプレイヤー名・設定)</span>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+            <button type="button" class="inspect-btn" data-contest-add-player="1" title="Add another player slot">
+              + Add Player
+            </button>
+            ${
+              state.contest.players.length !== 4
+                ? `<button type="button" class="inspect-btn" id="reset-4p-slots-btn" title="Set roster to 4 player slots">
+                    4-Player Preset
+                  </button>`
+                : ""
+            }
+            <button type="button" class="inspect-btn" id="reset-today-picks-btn" style="color:var(--higashi-primary);" title="Clear today's picks for all players while keeping the 4 player names">
+              🔄 Reset Today's Picks (本日の予想をリセット)
+            </button>
+          </div>
+        </h3>
+        <p style="font-size:0.79rem; color:var(--text-secondary);">
+          Type the 4 player names below — names and picks <strong>auto-save permanently on this device</strong>. Tap a player's colored <strong>P1–P4</strong> badge (or pill below) to make them the Active Pass-and-Play Picker!
+        </p>
+
+        <!-- 4-Name Inline Input Grid -->
+        <div class="roster-grid-4p">
+          ${rosterSlotsHtml}
+        </div>
+
+        <!-- Contest Scope & Active Picker Bar -->
+        <div class="filter-pills-row" style="border-top:1px solid var(--border-subtle); padding-top:0.65rem; margin-top:0.15rem;">
           <div class="control-group">
             <span class="control-label">Contest Scope 対象取組:</span>
             <div class="filter-pills" id="contest-scope-pills">
@@ -1928,12 +2059,9 @@
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Player Management Row -->
-        <div class="filter-pills-row">
           <div class="picker-bar-left">
-            <span class="picker-bar-label">👥 Players (参加者):</span>
+            <span class="picker-bar-label">🎯 Active Turn:</span>
             ${state.contest.players
               .map(
                 (p) => `
@@ -1943,41 +2071,16 @@
                   data-select-player="${p.id}"
                 >
                   <span class="player-dot" style="background:${p.color};"></span>
-                  <span>${escapeHtml(p.name)}</span>
+                  <span data-player-name-mirror="${p.id}">${escapeHtml(p.name)}</span>
                 </button>
               `
               )
               .join("")}
-            <button type="button" class="inspect-btn" data-contest-add-player="1">
-              + Add Friend (友達を追加)
-            </button>
           </div>
-
-          ${
-            activePlayer
-              ? `<div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
-                  <input
-                    type="text"
-                    id="rename-active-player-input"
-                    class="search-input"
-                    value="${escapeHtml(activePlayer.name)}"
-                    maxlength="24"
-                    style="width:145px; padding:0.28rem 0.5rem; font-size:0.78rem;"
-                    aria-label="Rename active player"
-                  />
-                  <button type="button" class="inspect-btn" id="save-rename-player-btn">Rename 名前変更</button>
-                  ${
-                    state.contest.players.length > 1
-                      ? `<button type="button" class="inspect-btn" id="delete-active-player-btn" style="color:var(--higashi-primary);">🗑 Remove</button>`
-                      : ""
-                  }
-                </div>`
-              : ""
-          }
         </div>
       </div>
 
-      <!-- Two-Column Grid: Live Leaderboard + Tiebreaker & Multi-Phone Share/Import -->
+      <!-- 2. Two-Column Grid: Live Leaderboard + Musubi Tiebreaker -->
       <div class="contest-grid-layout">
         <!-- Left Card: Live Leaderboard ("Who Pays the Tab? 💸") -->
         <div class="contest-card">
@@ -1990,113 +2093,84 @@
           <p style="font-size:0.79rem; color:var(--text-secondary);">
             1 pt per correct winner. Ties are broken by <strong>Musubi no Ichiban (#21) Kimarite</strong> and closest <strong>Kenshō-maku banner count</strong> so one person unequivocally pays!
           </p>
-          <div class="leaderboard-list">
+          <div class="leaderboard-list" id="contest-leaderboard-list">
             ${leaderboardHtml}
           </div>
         </div>
 
-        <!-- Right Column: Tiebreaker + Pass-and-Play / Share Link & Import -->
-        <div style="display:flex; flex-direction:column; gap:1rem;">
-          <!-- Musubi no Ichiban Tiebreaker Card -->
-          <div class="contest-card">
-            <h3>
-              <span>🎌 Musubi no Ichiban Tiebreaker (結びの一番タイブレーク)</span>
-            </h3>
-            <p style="font-size:0.78rem; color:var(--text-secondary);">
-              Final Bout: <strong>${musubiEast ? musubiEast.shikonaKanji + " (" + musubiEast.romaji + ")" : "East"}</strong> vs. <strong>${musubiWest ? musubiWest.shikonaKanji + " (" + musubiWest.romaji + ")" : "West"}</strong>.
-              Set <strong>${activePlayer ? escapeHtml(activePlayer.name) : "Player"}'s</strong> tiebreaker call:
-            </p>
-            <div style="display:flex; flex-direction:column; gap:0.55rem;">
-              <div>
-                <label for="tb-kimarite-select" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
-                  1. Predicted Winning Kimarite (決まり手予想):
+        <!-- Right Column: Musubi no Ichiban Tiebreaker Card -->
+        <div class="contest-card">
+          <h3>
+            <span>🎌 Musubi no Ichiban Tiebreaker (結びの一番タイブレーク)</span>
+          </h3>
+          <p style="font-size:0.78rem; color:var(--text-secondary);">
+            Final Bout: <strong>${musubiEast ? musubiEast.shikonaKanji + " (" + musubiEast.romaji + ")" : "East"}</strong> vs. <strong>${musubiWest ? musubiWest.shikonaKanji + " (" + musubiWest.romaji + ")" : "West"}</strong>.
+            Set <strong data-active-player-label="1">${activePlayer ? escapeHtml(activePlayer.name) : "Player"}</strong>'s tiebreaker call (or switch active player above):
+          </p>
+          <div style="display:flex; flex-direction:column; gap:0.65rem;">
+            <div>
+              <label for="tb-kimarite-select" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
+                1. Predicted Winning Kimarite (決まり手予想):
+              </label>
+              <select id="tb-kimarite-select" class="select-input" style="width:100%;">
+                ${kimariteOptionsHtml}
+              </select>
+            </div>
+            <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+              <div style="flex:1; min-width:130px;">
+                <label for="tb-kensho-input" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
+                  2. <span data-active-player-label="1">${activePlayer ? escapeHtml(activePlayer.name) : "Player"}</span>'s Kenshō Call (0–60):
                 </label>
-                <select id="tb-kimarite-select" class="select-input" style="width:100%;">
-                  ${kimariteOptionsHtml}
-                </select>
+                <input
+                  type="number"
+                  id="tb-kensho-input"
+                  class="select-input"
+                  min="0"
+                  max="60"
+                  value="${activeTb.kenshoCount ?? 15}"
+                  style="width:100%;"
+                />
               </div>
-              <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
-                <div style="flex:1; min-width:130px;">
-                  <label for="tb-kensho-input" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
-                    2. ${activePlayer ? escapeHtml(activePlayer.name) : "Player"}'s Kenshō Call (予想懸賞本数 0–60):
-                  </label>
-                  <input
-                    type="number"
-                    id="tb-kensho-input"
-                    class="select-input"
-                    min="0"
-                    max="60"
-                    value="${activeTb.kenshoCount ?? 15}"
-                    style="width:100%;"
-                  />
-                </div>
-                <div style="flex:1; min-width:130px;">
-                  <label for="actual-musubi-kensho-input" style="font-size:0.74rem; font-weight:700; color:var(--gold-primary); display:block; margin-bottom:0.2rem;">
-                    🎌 Actual Ring Kenshō (実際の懸賞本数):
-                  </label>
-                  <input
-                    type="number"
-                    id="actual-musubi-kensho-input"
-                    class="select-input"
-                    min="0"
-                    max="60"
-                    placeholder="Enter when paraded..."
-                    value="${actualKenshoVal}"
-                    style="width:100%;"
-                  />
-                </div>
+              <div style="flex:1; min-width:130px;">
+                <label for="actual-musubi-kensho-input" style="font-size:0.74rem; font-weight:700; color:var(--gold-primary); display:block; margin-bottom:0.2rem;">
+                  🎌 Actual Ring Kenshō (実際の懸賞本数):
+                </label>
+                <input
+                  type="number"
+                  id="actual-musubi-kensho-input"
+                  class="select-input"
+                  min="0"
+                  max="60"
+                  placeholder="Enter when paraded..."
+                  value="${actualKenshoVal}"
+                  style="width:100%;"
+                />
               </div>
-            </div>
-          </div>
-
-          <!-- Share & Import Card (Multi-Phone Zero-Backend Sync) -->
-          <div class="contest-card">
-            <h3>
-              <span>📲 Share or Import Picks (LINE / AirDrop / URL同期)</span>
-            </h3>
-            <p style="font-size:0.78rem; color:var(--text-secondary);">
-              Everyone picking on their own phone? Tap <strong>Share Link</strong> to send your picks via LINE/iMessage/AirDrop, or paste a friend's link/code below to merge into the leaderboard!
-            </p>
-            <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
-              <button type="button" class="action-btn" id="share-active-player-btn">
-                📤 Share ${activePlayer ? escapeHtml(activePlayer.name) : "My"}'s Picks Link
-              </button>
-              <button type="button" class="inspect-btn" id="share-all-group-btn">
-                📤 Share All Group Picks (${state.contest.players.length})
-              </button>
-            </div>
-            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
-              <input
-                type="text"
-                id="import-picks-input"
-                class="search-input"
-                placeholder="Paste friend's Share Link or Code here..."
-                style="flex:1; min-width:180px; font-size:0.78rem;"
-                aria-label="Paste friend's share link or code"
-              />
-              <button type="button" class="action-btn" id="import-picks-submit-btn">
-                📥 Import Friend
-              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Rapid Pick Sheet (一括予想シート) -->
+      <!-- 3. Pass-and-Play + 4-Player Matrix Pick Sheet (一括予想＆4人マトリックス) -->
       <div class="contest-card">
         <h3>
-          <span>⚡ Rapid Pick Sheet for <span style="color:var(--higashi-primary);">${activePlayer ? escapeHtml(activePlayer.name) : "Player"}</span> (一括予想シート)</span>
+          <span>⚡ Pass-and-Play &amp; 4-Player Pick Sheet (予想シート — Active: <span style="color:var(--higashi-primary);" data-active-player-label="1">${activePlayer ? escapeHtml(activePlayer.name) : "Player"}</span>)</span>
           <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
             <button type="button" class="inspect-btn" id="autofill-remaining-picks-btn">
-              🎲 Auto-Fill Remaining (おまかせ選択)
+              🎲 Auto-Fill Active Player
+            </button>
+            <button type="button" class="inspect-btn" id="autofill-all-4p-btn">
+              🎲 Auto-Fill All ${state.contest.players.length} Players
             </button>
             <button type="button" class="inspect-btn" id="clear-active-picks-btn">
-              🗑 Clear ${activePlayer ? escapeHtml(activePlayer.name) : ""}'s Picks
+              🗑 Clear Active Player's Picks
             </button>
           </div>
         </h3>
         <p style="font-size:0.78rem; color:var(--text-secondary);">
-          Tap East (<strong style="color:var(--higashi-primary);">東</strong>) or West (<strong style="color:var(--nishi-primary);">西</strong>) down the card to lock in all ${scopeBouts.length} bouts in seconds. Switch active player above to pass the phone!
+          <strong>Two ways to enter picks on one device:</strong>
+          (1) Tap the big <strong style="color:var(--higashi-primary);">東 East</strong> / <strong style="color:var(--nishi-primary);">西 West</strong> buttons for the Active Player and pass the phone, OR
+          (2) Tap any player's <strong>東E / 西W</strong> mini-buttons directly in the 4-player strip under each bout!
         </p>
         <div class="rapid-pick-list">
           ${rapidRowsHtml}
@@ -2329,8 +2403,37 @@
     // Kensho Calculator
     document.getElementById("kensho-input").addEventListener("input", updateKenshoCalculator);
 
-    // Delegated change events for Tab 5 Tiebreakers
+    // Real-time auto-save for the 4-Player Roster Name Inputs (without losing cursor focus)
+    document.body.addEventListener("input", (e) => {
+      const nameInput = e.target.closest("[data-player-name-input]");
+      if (!nameInput) return;
+      const pid = nameInput.getAttribute("data-player-name-input");
+      const player = state.contest.players.find((p) => p.id === pid);
+      if (!player) return;
+      const idx = state.contest.players.indexOf(player);
+      const val = nameInput.value.trim().slice(0, 22);
+      player.name = val || `Player ${idx + 1}`;
+      saveContestState();
+
+      // Update mirrored player labels in Tab 5 and Tab 1 without destroying input focus
+      document.querySelectorAll(`[data-player-name-mirror="${pid}"]`).forEach((el) => {
+        el.textContent = player.name;
+      });
+      if (state.contest.activePlayerId === pid) {
+        document.querySelectorAll("[data-active-player-label]").forEach((el) => {
+          el.textContent = player.name;
+        });
+      }
+      renderInlineContestPickerBar();
+    });
+
+    // Delegated change events for Tab 5 Roster Blur & Tiebreakers
     document.body.addEventListener("change", (e) => {
+      if (e.target.matches("[data-player-name-input]")) {
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
       if (e.target.id === "tb-kimarite-select") {
         const activePlayer = getActiveContestPlayer();
         if (!activePlayer) return;
@@ -2364,7 +2467,7 @@
       }
     });
 
-    // Delegated clicks for Rikishi Inspector, Watchlist Stars, Winner Markers, and Predictions Contest
+    // Delegated clicks for Rikishi Inspector, Watchlist Stars, Winner Markers, and 4-Player Contest
     document.body.addEventListener("click", (e) => {
       const openTabEl = e.target.closest("[data-open-tab]");
       if (openTabEl) {
@@ -2399,38 +2502,62 @@
         saveContestState();
         renderTorikumiList();
         renderPredictionsTab();
-        const renameInput = document.getElementById("rename-active-player-input");
-        if (renameInput && state.activeTab === "predictions") {
-          renameInput.focus();
-          renameInput.select();
-        }
         return;
       }
 
-      if (e.target.id === "save-rename-player-btn") {
-        const input = document.getElementById("rename-active-player-input");
-        const activePlayer = getActiveContestPlayer();
-        if (input && activePlayer) {
-          const cleaned = input.value.trim().slice(0, 24);
-          if (cleaned) {
-            activePlayer.name = cleaned;
-            saveContestState();
-            renderTorikumiList();
-            renderPredictionsTab();
-          }
+      const removePlayerEl = e.target.closest("[data-remove-player]");
+      if (removePlayerEl) {
+        if (state.contest.players.length <= 2) return;
+        const pid = removePlayerEl.getAttribute("data-remove-player");
+        state.contest.players = state.contest.players.filter((p) => p.id !== pid);
+        if (state.contest.activePlayerId === pid) {
+          state.contest.activePlayerId = state.contest.players[0].id;
         }
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
         return;
       }
 
-      if (e.target.id === "delete-active-player-btn") {
-        if (state.contest.players.length <= 1) return;
-        const activePlayer = getActiveContestPlayer();
-        if (!activePlayer) return;
-        state.contest.players = state.contest.players.filter((p) => p.id !== activePlayer.id);
+      if (e.target.id === "reset-4p-slots-btn") {
+        while (state.contest.players.length < 4) {
+          const nextNum = state.contest.players.length + 1;
+          state.contest.players.push({
+            id: "p_" + Date.now().toString(36) + "_" + nextNum,
+            name: `Player ${nextNum}`,
+            color: PLAYER_COLORS[(nextNum - 1) % PLAYER_COLORS.length],
+            picks: {},
+            tiebreakers: {}
+          });
+        }
+        if (state.contest.players.length > 4) {
+          state.contest.players = state.contest.players.slice(0, 4);
+        }
         state.contest.activePlayerId = state.contest.players[0].id;
         saveContestState();
         renderTorikumiList();
         renderPredictionsTab();
+        return;
+      }
+
+      if (e.target.id === "reset-today-picks-btn") {
+        const dayPrefix = `${state.selectedBashoId}-D${state.selectedDay}-`;
+        const dayKey = getContestDayKey();
+        state.contest.players.forEach((p) => {
+          if (p.picks) {
+            Object.keys(p.picks).forEach((k) => {
+              if (k.startsWith(dayPrefix)) delete p.picks[k];
+            });
+          }
+          if (p.tiebreakers) {
+            delete p.tiebreakers[dayKey];
+          }
+        });
+        delete state.contest.actualMusubiKensho[dayKey];
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        showContestToast("✓ Reset today's predictions for all players (player names kept)!");
         return;
       }
 
@@ -2447,13 +2574,16 @@
       if (pickBoutEl) {
         const bKey = pickBoutEl.getAttribute("data-pick-bout");
         const side = pickBoutEl.getAttribute("data-pick-side");
-        const activePlayer = getActiveContestPlayer();
-        if (!activePlayer) return;
-        if (!activePlayer.picks) activePlayer.picks = {};
-        if (activePlayer.picks[bKey] === side) {
-          delete activePlayer.picks[bKey];
+        const explicitPlayerId = pickBoutEl.getAttribute("data-pick-player");
+        const targetPlayer = explicitPlayerId
+          ? state.contest.players.find((p) => p.id === explicitPlayerId)
+          : getActiveContestPlayer();
+        if (!targetPlayer) return;
+        if (!targetPlayer.picks) targetPlayer.picks = {};
+        if (targetPlayer.picks[bKey] === side) {
+          delete targetPlayer.picks[bKey];
         } else {
-          activePlayer.picks[bKey] = side;
+          targetPlayer.picks[bKey] = side;
         }
         saveContestState();
         renderTorikumiList();
@@ -2465,16 +2595,35 @@
         const activePlayer = getActiveContestPlayer();
         if (!activePlayer) return;
         if (!activePlayer.picks) activePlayer.picks = {};
+        const pIdx = Math.max(0, state.contest.players.indexOf(activePlayer));
         const scopeBouts = getBoutsInContestScope();
         scopeBouts.forEach((bout, idx) => {
           const bKey = getBoutKey(bout);
           if (!activePlayer.picks[bKey]) {
-            activePlayer.picks[bKey] = (bout.boutNo + idx) % 2 === 0 ? "East" : "West";
+            activePlayer.picks[bKey] = (bout.boutNo + idx + pIdx) % 2 === 0 ? "East" : "West";
           }
         });
         saveContestState();
         renderTorikumiList();
         renderPredictionsTab();
+        return;
+      }
+
+      if (e.target.id === "autofill-all-4p-btn") {
+        const scopeBouts = getBoutsInContestScope();
+        state.contest.players.forEach((p, pIdx) => {
+          if (!p.picks) p.picks = {};
+          scopeBouts.forEach((bout, idx) => {
+            const bKey = getBoutKey(bout);
+            if (!p.picks[bKey]) {
+              p.picks[bKey] = ((bout.boutNo * (pIdx + 1)) + idx + pIdx) % 2 === 0 ? "East" : "West";
+            }
+          });
+        });
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        showContestToast(`✓ Auto-filled remaining picks for all ${state.contest.players.length} players!`);
         return;
       }
 
@@ -2488,55 +2637,6 @@
         saveContestState();
         renderTorikumiList();
         renderPredictionsTab();
-        return;
-      }
-
-      if (e.target.id === "share-active-player-btn" || e.target.id === "share-all-group-btn") {
-        const isAll = e.target.id === "share-all-group-btn";
-        const activePlayer = getActiveContestPlayer();
-        const playersToShare = isAll
-          ? state.contest.players
-          : activePlayer
-          ? [activePlayer]
-          : state.contest.players;
-        const code = buildShareCodeForPlayers(playersToShare);
-        const shareUrl = `${window.location.origin}${window.location.pathname}?importPicks=${code}`;
-        const label = isAll
-          ? `All ${playersToShare.length} players`
-          : activePlayer
-          ? activePlayer.name
-          : "My";
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(shareUrl).catch(() => {});
-        }
-        showContestToast(`✓ Copied ${label}'s Share Link to clipboard! Send it via LINE/iMessage/AirDrop.`);
-
-        if (navigator.share) {
-          navigator
-            .share({
-              title: `Dohyō Guide — ${label}'s Sumo Predictions`,
-              text: `Import ${label}'s Sumo Contest Picks (Loser Pays Everything! 💸):`,
-              url: shareUrl
-            })
-            .catch(() => {});
-        }
-        return;
-      }
-
-      if (e.target.id === "import-picks-submit-btn") {
-        const input = document.getElementById("import-picks-input");
-        if (!input || !input.value.trim()) return;
-        try {
-          const decoded = decodeContestSharePayload(input.value.trim());
-          const names = importDecodedPayload(decoded);
-          input.value = "";
-          renderTorikumiList();
-          renderPredictionsTab();
-          showContestToast(`✓ Imported ${names.join(", ")}'s picks into the leaderboard!`);
-        } catch (err) {
-          showContestToast("⚠ Invalid Share Link or Code. Please copy the full link or code from your friend.");
-        }
         return;
       }
 
