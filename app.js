@@ -17,6 +17,55 @@
   ];
   const DIVISION_MAP = new Map(DIVISIONS.map((d) => [d.key, d]));
 
+  const PLAYER_COLORS = [
+    "#B91C1C",
+    "#1E3A8A",
+    "#D97706",
+    "#15803D",
+    "#7E22CE",
+    "#0F766E",
+    "#BE185D",
+    "#4338CA"
+  ];
+
+  function loadContestState() {
+    try {
+      const raw = localStorage.getItem("dohyo_contest_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.players) && parsed.players.length > 0) {
+          return {
+            players: parsed.players,
+            activePlayerId: parsed.activePlayerId || parsed.players[0].id,
+            contestScope: parsed.contestScope || "Makuuchi",
+            actualMusubiKensho: parsed.actualMusubiKensho || {}
+          };
+        }
+      }
+    } catch (_) {}
+    return {
+      players: [
+        {
+          id: "p1",
+          name: "Player 1",
+          color: PLAYER_COLORS[0],
+          picks: {},
+          tiebreakers: {}
+        },
+        {
+          id: "p2",
+          name: "Player 2",
+          color: PLAYER_COLORS[1],
+          picks: {},
+          tiebreakers: {}
+        }
+      ],
+      activePlayerId: "p1",
+      contestScope: "Makuuchi",
+      actualMusubiKensho: {}
+    };
+  }
+
   // Application State
   const state = {
     activeTab: "torikumi",
@@ -34,9 +83,23 @@
     kimariteSearch: "",
     starredBouts: new Set(JSON.parse(localStorage.getItem("dohyo_starred_bouts") || "[]")),
     starredRikishi: new Set(JSON.parse(localStorage.getItem("dohyo_starred_rikishi") || "[]")),
-    simulatedWinners: {}, // boutKey -> { side: 'East'|'West', kimariteId: string }
-    boutsForCurrentSelection: []
+    simulatedWinners: JSON.parse(localStorage.getItem("dohyo_sim_winners") || "{}"), // boutKey -> { side: 'East'|'West', kimariteId: string }
+    boutsForCurrentSelection: [],
+    contest: loadContestState(),
+    editingPlayerId: null
   };
+
+  function saveContestState() {
+    try {
+      localStorage.setItem("dohyo_contest_v1", JSON.stringify(state.contest));
+    } catch (_) {}
+  }
+
+  function saveSimulatedWinners() {
+    try {
+      localStorage.setItem("dohyo_sim_winners", JSON.stringify(state.simulatedWinners));
+    } catch (_) {}
+  }
 
   // Lookup Maps
   const rikishiById = new Map();
@@ -69,6 +132,7 @@
     initDayStrip();
     generateScheduleForDay(state.selectedDay);
     bindEvents();
+    checkUrlAutoImportPicks();
     renderAll();
     // Auto-sync live results from sumo-api.com in background
     syncWithLiveSumoApi();
@@ -396,6 +460,7 @@
         text.textContent = `Live API Synced • ${dateStr} (${allMapped.length} Bouts across 6 Divisions)`;
         updateDivisionPills();
         renderTorikumiList();
+        renderPredictionsTab();
         return;
       }
       throw new Error("Empty torikumi payload");
@@ -405,11 +470,12 @@
       generateScheduleForDay(state.selectedDay);
       updateDivisionPills();
       renderTorikumiList();
+      renderPredictionsTab();
     }
   }
 
   /* ========================================================================
-     Tab 1 Renderer: Torikumi Bout Cards
+     Tab 1 Renderer: Torikumi Bout Cards + Inline Contest Picker
      ======================================================================== */
   function renderTorikumiList() {
     const container = document.getElementById("bout-list-container");
@@ -421,7 +487,9 @@
     watchlistCountEl.textContent = state.starredBouts.size + state.starredRikishi.size;
     renderDenkoScoreboardPreview();
     updateDivisionPills();
+    renderInlineContestPickerBar();
 
+    const activePlayer = getActiveContestPlayer();
     const query = state.torikumiSearch.trim().toLowerCase();
 
     const filtered = state.boutsForCurrentSelection
@@ -433,7 +501,7 @@
         const west = rikishiById.get(bout.westId);
         if (!east || !west) return false;
 
-        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-${div}-B${bout.boutNo}`;
+        const boutKey = getBoutKey(bout);
         const isStarred =
           state.starredBouts.has(boutKey) ||
           state.starredRikishi.has(east.id) ||
@@ -524,7 +592,7 @@
         const divJp = bout.divisionJp || "幕内";
         const east = rikishiById.get(bout.eastId);
         const west = rikishiById.get(bout.westId);
-        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-${div}-B${bout.boutNo}`;
+        const boutKey = getBoutKey(bout);
         const isStarred =
           state.starredBouts.has(boutKey) ||
           state.starredRikishi.has(east.id) ||
@@ -538,6 +606,30 @@
         const totalH2H = Math.max(1, bout.h2hEast + bout.h2hWest);
         const eastPct = Math.round((bout.h2hEast / totalH2H) * 100);
         const westPct = 100 - eastPct;
+
+        const activePick = activePlayer && activePlayer.picks ? activePlayer.picks[boutKey] : null;
+        const groupPickChipsHtml = state.contest.players
+          .map((p) => {
+            const pSide = p.picks ? p.picks[boutKey] : null;
+            if (!pSide) {
+              return `<span class="player-pick-chip"><span class="player-dot" style="background:${p.color};"></span>${escapeHtml(p.name)}: —</span>`;
+            }
+            const pickedRikishi = pSide === "East" ? east : west;
+            const sideKanji = pSide === "East" ? "東" : "西";
+            let statusClass = "";
+            let statusMark = "";
+            if (effectiveWinner) {
+              if (pSide === effectiveWinner) {
+                statusClass = "pick-correct";
+                statusMark = " ✓ +1";
+              } else {
+                statusClass = "pick-wrong";
+                statusMark = " ✗";
+              }
+            }
+            return `<span class="player-pick-chip ${statusClass}"><span class="player-dot" style="background:${p.color};"></span>${escapeHtml(p.name)}: ${sideKanji} ${pickedRikishi.shikonaKanji} (${pickedRikishi.romaji})${statusMark}</span>`;
+          })
+          .join("");
 
         return `
           <article class="bout-card ${isStarred ? "starred-bout" : ""}" id="bout-card-${div}-${bout.boutNo}">
@@ -639,7 +731,52 @@
               <p class="storyline-text-en lang-en-only">${bout.storylineEn}</p>
               <p class="storyline-text-jp lang-jp-only">${bout.storylineJp}</p>
 
-              <!-- Interactive Quick Kanji & Match Outcome Controls -->
+              <!-- Predictions & Result Strip -->
+              <div class="bout-prediction-strip">
+                <div class="bout-pick-top-row">
+                  <div class="pick-btn-group">
+                    <span style="font-size:0.72rem; font-weight:800; color:var(--text-primary);">
+                      🎯 ${activePlayer ? escapeHtml(activePlayer.name) : "Player"}'s Pick (予想):
+                    </span>
+                    <button
+                      type="button"
+                      class="pick-side-btn east-btn ${activePick === "East" ? "selected-east" : ""}"
+                      data-pick-bout="${boutKey}"
+                      data-pick-side="East"
+                    >
+                      東 Pick ${east.shikonaKanji} (${east.romaji})
+                    </button>
+                    <button
+                      type="button"
+                      class="pick-side-btn west-btn ${activePick === "West" ? "selected-west" : ""}"
+                      data-pick-bout="${boutKey}"
+                      data-pick-side="West"
+                    >
+                      西 Pick ${west.shikonaKanji} (${west.romaji})
+                    </button>
+                  </div>
+                  <div style="display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:0.68rem; color:var(--text-muted); font-weight:700;">Judge 判定:</span>
+                    <button type="button" class="inspect-btn" data-mark-winner="${boutKey}" data-side="East" data-move="${east.signatureMoves[0].toLowerCase()}">
+                      East ○ ${east.shikonaKanji}
+                    </button>
+                    <button type="button" class="inspect-btn" data-mark-winner="${boutKey}" data-side="West" data-move="${west.signatureMoves[0].toLowerCase()}">
+                      West ○ ${west.shikonaKanji}
+                    </button>
+                    ${
+                      sim
+                        ? `<button type="button" class="inspect-btn" data-clear-winner="${boutKey}" title="Clear manual referee result">✕ Clear</button>`
+                        : ""
+                    }
+                  </div>
+                </div>
+                <div class="group-picks-row">
+                  <span style="font-size:0.68rem; font-weight:700; color:var(--text-muted);">Group Picks:</span>
+                  ${groupPickChipsHtml}
+                </div>
+              </div>
+
+              <!-- Interactive Quick Kanji Decode Controls -->
               <div class="bout-quick-actions">
                 <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                   <button type="button" class="inspect-btn" data-inspect-rikishi="${east.id}">
@@ -649,15 +786,9 @@
                     🔍 Decode ${west.shikonaKanji} (${west.romaji})
                   </button>
                 </div>
-                <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
-                  <span style="font-size:0.7rem; color:var(--text-muted);">Mark Winner:</span>
-                  <button type="button" class="inspect-btn" data-mark-winner="${boutKey}" data-side="East" data-move="${east.signatureMoves[0].toLowerCase()}">
-                    ○ ${east.shikonaKanji}
-                  </button>
-                  <button type="button" class="inspect-btn" data-mark-winner="${boutKey}" data-side="West" data-move="${west.signatureMoves[0].toLowerCase()}">
-                    ○ ${west.shikonaKanji}
-                  </button>
-                </div>
+                <button type="button" class="inspect-btn" data-open-tab="predictions">
+                  🏆 Open Leaderboard &amp; Share Picks →
+                </button>
               </div>
             </div>
           </article>
@@ -950,7 +1081,7 @@
         const west = rikishiById.get(bout.westId);
         if (!east || !west) return "";
 
-        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
+        const boutKey = getBoutKey(bout);
         const sim = state.simulatedWinners[boutKey];
         const effectiveWinner = sim ? sim.side : bout.winnerSide;
         const effectiveKimariteId = sim ? sim.kimariteId : bout.kimariteId;
@@ -998,6 +1129,674 @@
     document.getElementById("kensho-total-yen").textContent = "¥" + totalYen.toLocaleString();
     document.getElementById("kensho-cash-yen").textContent = "¥" + cashYen.toLocaleString();
     document.getElementById("kensho-fund-yen").textContent = "¥" + fundYen.toLocaleString();
+  }
+
+  /* ========================================================================
+     Phase 2: Predictions & "Loser Pays Everything" Contest (予想対決・ゴチ)
+     ======================================================================== */
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function getContestDayKey() {
+    return `${state.selectedBashoId}-D${state.selectedDay}`;
+  }
+
+  function getBoutKey(bout) {
+    const div = bout.division || "Makuuchi";
+    return `${state.selectedBashoId}-D${state.selectedDay}-${div}-B${bout.boutNo}`;
+  }
+
+  function getActiveContestPlayer() {
+    if (!state.contest.players.length) return null;
+    const found = state.contest.players.find((p) => p.id === state.contest.activePlayerId);
+    if (found) return found;
+    state.contest.activePlayerId = state.contest.players[0].id;
+    return state.contest.players[0];
+  }
+
+  function getBoutsInContestScope() {
+    const scope = state.contest.contestScope || "Makuuchi";
+    return state.boutsForCurrentSelection
+      .filter((b) => {
+        const div = b.division || "Makuuchi";
+        if (scope === "Makuuchi") return div === "Makuuchi";
+        if (scope === "Sanyaku") return div === "Makuuchi" && (b.isSanyaku || b.boutNo >= 15);
+        if (scope === "Juryo") return div === "Juryo";
+        return true; // "All"
+      })
+      .sort((a, b) => {
+        const divA = a.divisionOrder || 6;
+        const divB = b.divisionOrder || 6;
+        if (divA !== divB) return divB - divA;
+        return b.boutNo - a.boutNo;
+      });
+  }
+
+  function getMusubiBout() {
+    const makuuchiBouts = state.boutsForCurrentSelection.filter(
+      (b) => !b.division || b.division === "Makuuchi"
+    );
+    const pool = makuuchiBouts.length > 0 ? makuuchiBouts : state.boutsForCurrentSelection;
+    if (!pool.length) return null;
+    return pool.slice().sort((a, b) => b.boutNo - a.boutNo)[0];
+  }
+
+  function computeContestStandings() {
+    const scopeBouts = getBoutsInContestScope();
+    const totalBouts = scopeBouts.length;
+    const dayKey = getContestDayKey();
+    const musubiBout = getMusubiBout();
+    const musubiKey = musubiBout ? getBoutKey(musubiBout) : null;
+    const musubiSim = musubiKey ? state.simulatedWinners[musubiKey] : null;
+    const actualMusubiKimarite = musubiSim
+      ? musubiSim.kimariteId
+      : musubiBout && musubiBout.kimariteId
+      ? musubiBout.kimariteId
+      : null;
+
+    const actualKenshoRaw = state.contest.actualMusubiKensho[dayKey];
+    const hasActualKensho =
+      actualKenshoRaw !== undefined && actualKenshoRaw !== null && actualKenshoRaw !== "";
+    const actualKenshoNum = hasActualKensho ? Number(actualKenshoRaw) : null;
+
+    const rows = state.contest.players.map((p, idx) => {
+      let correct = 0;
+      let wrong = 0;
+      let pending = 0;
+      let pickedCount = 0;
+
+      scopeBouts.forEach((bout) => {
+        const bKey = getBoutKey(bout);
+        const pick = p.picks ? p.picks[bKey] : null;
+        if (pick) pickedCount++;
+        const sim = state.simulatedWinners[bKey];
+        const winner = sim ? sim.side : bout.winnerSide;
+        if (winner) {
+          if (pick === winner) {
+            correct++;
+          } else if (pick) {
+            wrong++;
+          }
+        } else {
+          pending++;
+        }
+      });
+
+      const tb = (p.tiebreakers && p.tiebreakers[dayKey]) || {
+        kimariteId: "yorikiri",
+        kenshoCount: 15
+      };
+      const kimariteExact =
+        actualMusubiKimarite && tb.kimariteId === actualMusubiKimarite ? 1 : 0;
+      const kenshoDiff =
+        hasActualKensho && tb.kenshoCount !== undefined
+          ? Math.abs(Number(tb.kenshoCount) - actualKenshoNum)
+          : 999;
+
+      const graded = correct + wrong;
+      const winPct = graded > 0 ? Math.round((correct / graded) * 100) : 0;
+      const maxPossible = correct + pending;
+
+      return {
+        player: p,
+        originalIdx: idx,
+        correct,
+        wrong,
+        pending,
+        pickedCount,
+        totalBouts,
+        winPct,
+        maxPossible,
+        tb,
+        kimariteExact,
+        kenshoDiff
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.correct !== a.correct) return b.correct - a.correct;
+      if (b.kimariteExact !== a.kimariteExact) return b.kimariteExact - a.kimariteExact;
+      if (a.kenshoDiff !== b.kenshoDiff) return a.kenshoDiff - b.kenshoDiff;
+      if (b.pickedCount !== a.pickedCount) return b.pickedCount - a.pickedCount;
+      return a.originalIdx - b.originalIdx;
+    });
+
+    return rows;
+  }
+
+  function showContestToast(message) {
+    const banner = document.getElementById("contest-toast-banner");
+    if (!banner) return;
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <span>${escapeHtml(message)}</span>
+      <button type="button" class="inspect-btn" id="dismiss-contest-toast-btn">OK</button>
+    `;
+    const btn = document.getElementById("dismiss-contest-toast-btn");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        banner.style.display = "none";
+      });
+    }
+  }
+
+  function encodeContestSharePayload(payloadObj) {
+    const jsonStr = JSON.stringify(payloadObj);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let binary = "";
+    bytes.forEach((b) => {
+      binary += String.fromCharCode(b);
+    });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function decodeContestSharePayload(rawCodeOrUrl) {
+    let token = String(rawCodeOrUrl || "").trim();
+    if (!token) throw new Error("Empty code");
+
+    if (token.includes("importPicks=")) {
+      try {
+        const u = new URL(token);
+        token = u.searchParams.get("importPicks") || token;
+      } catch (_) {
+        const m = token.match(/[?&]importPicks=([^&#\s]+)/);
+        if (m) token = decodeURIComponent(m[1]);
+      }
+    }
+
+    const base64 = token.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "===".slice((base64.length + 3) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const jsonStr = new TextDecoder().decode(bytes);
+    return JSON.parse(jsonStr);
+  }
+
+  function buildShareCodeForPlayers(playersList) {
+    const dayPrefix = `${state.selectedBashoId}-D${state.selectedDay}-`;
+    const dayKey = getContestDayKey();
+    const compactPlayers = playersList.map((p) => {
+      const compactPicks = {};
+      Object.keys(p.picks || {}).forEach((k) => {
+        if (k.startsWith(dayPrefix)) {
+          const shortKey = k.slice(dayPrefix.length); // e.g. Makuuchi-B21
+          compactPicks[shortKey] = p.picks[k] === "East" ? "E" : "W";
+        }
+      });
+      const tb = (p.tiebreakers && p.tiebreakers[dayKey]) || {
+        kimariteId: "yorikiri",
+        kenshoCount: 15
+      };
+      return {
+        n: p.name,
+        c: p.color,
+        p: compactPicks,
+        tb: [tb.kimariteId || "yorikiri", Number(tb.kenshoCount ?? 15)]
+      };
+    });
+
+    const payload = {
+      v: 1,
+      b: state.selectedBashoId,
+      d: state.selectedDay,
+      s: state.contest.contestScope,
+      pl: compactPlayers
+    };
+    return encodeContestSharePayload(payload);
+  }
+
+  function importDecodedPayload(decoded) {
+    if (!decoded || !Array.isArray(decoded.pl) || decoded.pl.length === 0) {
+      throw new Error("Invalid picks payload");
+    }
+    const bashoId = decoded.b || state.selectedBashoId;
+    const dayNum = Number(decoded.d) || state.selectedDay;
+    const dayPrefix = `${bashoId}-D${dayNum}-`;
+    const dayKey = `${bashoId}-D${dayNum}`;
+
+    if (bashoId !== state.selectedBashoId || dayNum !== state.selectedDay) {
+      state.selectedBashoId = bashoId;
+      state.selectedDay = dayNum;
+      const bashoSelect = document.getElementById("basho-select");
+      if (bashoSelect) bashoSelect.value = bashoId;
+      initDayStrip();
+      generateScheduleForDay(dayNum);
+    }
+
+    const importedNames = [];
+    decoded.pl.forEach((item) => {
+      const name = String(item.n || "Friend").trim().slice(0, 28) || "Friend";
+      importedNames.push(name);
+      let existing = state.contest.players.find(
+        (p) => p.name.toLowerCase() === name.toLowerCase()
+      );
+      if (!existing) {
+        existing = {
+          id: "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6),
+          name,
+          color:
+            item.c ||
+            PLAYER_COLORS[state.contest.players.length % PLAYER_COLORS.length],
+          picks: {},
+          tiebreakers: {}
+        };
+        state.contest.players.push(existing);
+      }
+      if (!existing.picks) existing.picks = {};
+      if (!existing.tiebreakers) existing.tiebreakers = {};
+
+      Object.keys(item.p || {}).forEach((shortKey) => {
+        const val = item.p[shortKey];
+        existing.picks[dayPrefix + shortKey] = val === "E" ? "East" : "West";
+      });
+
+      if (Array.isArray(item.tb)) {
+        existing.tiebreakers[dayKey] = {
+          kimariteId: item.tb[0] || "yorikiri",
+          kenshoCount: Number(item.tb[1] ?? 15)
+        };
+      }
+      state.contest.activePlayerId = existing.id;
+    });
+
+    saveContestState();
+    return importedNames;
+  }
+
+  function checkUrlAutoImportPicks() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const importParam = params.get("importPicks");
+      if (!importParam) return;
+      const decoded = decodeContestSharePayload(importParam);
+      const names = importDecodedPayload(decoded);
+      // Clean URL
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      // Switch to Tab 5
+      state.activeTab = "predictions";
+      document.querySelectorAll(".nav-tab-btn").forEach((b) => {
+        b.classList.toggle("active", b.getAttribute("data-tab") === "predictions");
+      });
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        p.classList.toggle("active", p.id === "panel-predictions");
+      });
+      showContestToast(`✓ Imported ${names.join(", ")}'s predictions into the leaderboard!`);
+    } catch (err) {
+      showContestToast("Could not decode shared picks link. Paste the code manually below.");
+    }
+  }
+
+  function renderInlineContestPickerBar() {
+    const bar = document.getElementById("inline-contest-picker-bar");
+    if (!bar) return;
+
+    const activePlayer = getActiveContestPlayer();
+    const standings = computeContestStandings();
+    const leader = standings[0];
+    const loser = standings.length > 1 ? standings[standings.length - 1] : null;
+
+    const playerPillsHtml = state.contest.players
+      .map((p) => {
+        const row = standings.find((r) => r.player.id === p.id);
+        const pts = row ? row.correct : 0;
+        const picked = row ? row.pickedCount : 0;
+        const total = row ? row.totalBouts : 0;
+        return `
+          <button
+            type="button"
+            class="player-picker-pill ${activePlayer && activePlayer.id === p.id ? "active" : ""}"
+            data-select-player="${p.id}"
+            title="Switch active picker to ${escapeHtml(p.name)}"
+          >
+            <span class="player-dot" style="background:${p.color};"></span>
+            <span>${escapeHtml(p.name)}</span>
+            <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">(${pts}pt • ${picked}/${total})</span>
+          </button>
+        `;
+      })
+      .join("");
+
+    bar.innerHTML = `
+      <div class="picker-bar-left">
+        <span class="picker-bar-label">🎯 Active Picker (予想者):</span>
+        ${playerPillsHtml}
+        <button type="button" class="inspect-btn" data-contest-add-player="1" title="Add another friend to the contest">
+          + Add Friend
+        </button>
+      </div>
+      <div class="picker-bar-right">
+        ${
+          leader && loser
+            ? `<span class="mini-standings-pill">
+                👑 ${escapeHtml(leader.player.name)} (${leader.correct}pt) • 💸 Pays All: ${escapeHtml(loser.player.name)} (${loser.correct}pt)
+              </span>`
+            : ""
+        }
+        <button type="button" class="action-btn" data-open-tab="predictions">
+          🏆 Tab 5: Leaderboard &amp; Share
+        </button>
+      </div>
+    `;
+  }
+
+  function renderPredictionsTab() {
+    const container = document.getElementById("predictions-dashboard-container");
+    if (!container) return;
+
+    const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
+    const dateStr = getDayDateStr(basho, state.selectedDay);
+    const dayBadge = document.getElementById("contest-day-badge");
+    if (dayBadge) {
+      dayBadge.innerHTML = `<span>🏮 ${basho.city} • ${dateStr} • Day ${state.selectedDay}</span>`;
+    }
+
+    const activePlayer = getActiveContestPlayer();
+    const standings = computeContestStandings();
+    const scopeBouts = getBoutsInContestScope();
+    const dayKey = getContestDayKey();
+    const activeTb = (activePlayer &&
+      activePlayer.tiebreakers &&
+      activePlayer.tiebreakers[dayKey]) || {
+      kimariteId: "yorikiri",
+      kenshoCount: 15
+    };
+    const actualKenshoVal =
+      state.contest.actualMusubiKensho[dayKey] !== undefined
+        ? state.contest.actualMusubiKensho[dayKey]
+        : "";
+    const musubiBout = getMusubiBout();
+    const musubiEast = musubiBout ? rikishiById.get(musubiBout.eastId) : null;
+    const musubiWest = musubiBout ? rikishiById.get(musubiBout.westId) : null;
+
+    const leaderboardHtml = standings
+      .map((row, idx) => {
+        const isFirst = idx === 0;
+        const isLastPays = standings.length > 1 && idx === standings.length - 1;
+        const kObj = kimariteById.get(row.tb.kimariteId) || DATA.kimarite[0];
+
+        return `
+          <div class="leaderboard-row ${isFirst ? "rank-first" : ""} ${isLastPays ? "rank-last-pays" : ""}">
+            <div class="lb-player-info">
+              <div class="lb-name-line">
+                <span style="font-family:var(--font-mono); font-size:0.82rem;">#${idx + 1}</span>
+                <span class="player-dot" style="background:${row.player.color};"></span>
+                <span>${escapeHtml(row.player.name)}</span>
+                ${isFirst ? `<span class="lb-badge-yokozuna">👑 YOKOZUNA LEADER</span>` : ""}
+                ${isLastPays ? `<span class="lb-badge-pays">💸 PAYS FOR EVERYTHING / 全額ゴチ決定枠!</span>` : ""}
+              </div>
+              <div class="lb-sub-meta">
+                Tiebreaker (結び): <strong>${kObj ? kObj.kanji + " (" + kObj.romaji + ")" : row.tb.kimariteId}</strong>
+                • <strong>${row.tb.kenshoCount ?? 15}</strong> Kenshō banners
+                ${row.kenshoDiff < 999 ? ` (Diff: ±${row.kenshoDiff})` : ""}
+              </div>
+            </div>
+            <div class="lb-score-block">
+              <div class="lb-points">${row.correct} <span style="font-size:0.75rem; font-weight:600;">pts</span></div>
+              <div class="lb-record-detail">
+                ✓ ${row.correct}W - ✗ ${row.wrong}L • ${row.pending} left (${row.winPct}% • Max ${row.maxPossible})
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const kimariteOptionsHtml = DATA.kimarite
+      .map(
+        (k) =>
+          `<option value="${k.id}" ${k.id === activeTb.kimariteId ? "selected" : ""}>${k.kanji} (${k.romaji} — ${k.nameEn})</option>`
+      )
+      .join("");
+
+    const rapidRowsHtml = scopeBouts
+      .map((bout) => {
+        const div = bout.division || "Makuuchi";
+        const divJp = bout.divisionJp || "幕内";
+        const east = rikishiById.get(bout.eastId);
+        const west = rikishiById.get(bout.westId);
+        if (!east || !west) return "";
+
+        const bKey = getBoutKey(bout);
+        const pick = activePlayer && activePlayer.picks ? activePlayer.picks[bKey] : null;
+        const sim = state.simulatedWinners[bKey];
+        const effectiveWinner = sim ? sim.side : bout.winnerSide;
+
+        return `
+          <div class="rapid-pick-row">
+            <div class="rapid-pick-num">
+              ${divJp} #${bout.boutNo}
+              ${effectiveWinner ? `<div style="font-size:0.65rem; color:var(--gold-primary);">Win: ${effectiveWinner}</div>` : ""}
+            </div>
+            <button
+              type="button"
+              class="rapid-choice-btn ${pick === "East" ? "selected-east" : ""}"
+              data-pick-bout="${bKey}"
+              data-pick-side="East"
+            >
+              <span>東 ${east.shikonaKanji} (${east.romaji})</span>
+              <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${east.currentRecord}</span>
+            </button>
+            <span style="font-size:0.7rem; font-weight:800; color:var(--text-muted); text-align:center;">VS</span>
+            <button
+              type="button"
+              class="rapid-choice-btn ${pick === "West" ? "selected-west" : ""}"
+              data-pick-bout="${bKey}"
+              data-pick-side="West"
+            >
+              <span>西 ${west.shikonaKanji} (${west.romaji})</span>
+              <span style="font-family:var(--font-mono); font-size:0.68rem; opacity:0.85;">${west.currentRecord}</span>
+            </button>
+          </div>
+        `;
+      })
+      .join("");
+
+    container.innerHTML = `
+      <!-- Contest Scope & Player Switcher Controls -->
+      <div class="torikumi-controls">
+        <div class="controls-top-row">
+          <div class="control-group">
+            <span class="control-label">Contest Scope 対象取組:</span>
+            <div class="filter-pills" id="contest-scope-pills">
+              <button type="button" class="filter-pill ${state.contest.contestScope === "Makuuchi" ? "active" : ""}" data-contest-scope="Makuuchi">
+                Makuuchi 幕内 (Default)
+              </button>
+              <button type="button" class="filter-pill ${state.contest.contestScope === "Sanyaku" ? "active" : ""}" data-contest-scope="Sanyaku">
+                San'yaku Final 7 三役・上位
+              </button>
+              <button type="button" class="filter-pill ${state.contest.contestScope === "Juryo" ? "active" : ""}" data-contest-scope="Juryo">
+                Juryo 十両
+              </button>
+              <button type="button" class="filter-pill ${state.contest.contestScope === "All" ? "active" : ""}" data-contest-scope="All">
+                All Divisions 全階級
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player Management Row -->
+        <div class="filter-pills-row">
+          <div class="picker-bar-left">
+            <span class="picker-bar-label">👥 Players (参加者):</span>
+            ${state.contest.players
+              .map(
+                (p) => `
+                <button
+                  type="button"
+                  class="player-picker-pill ${activePlayer && activePlayer.id === p.id ? "active" : ""}"
+                  data-select-player="${p.id}"
+                >
+                  <span class="player-dot" style="background:${p.color};"></span>
+                  <span>${escapeHtml(p.name)}</span>
+                </button>
+              `
+              )
+              .join("")}
+            <button type="button" class="inspect-btn" data-contest-add-player="1">
+              + Add Friend (友達を追加)
+            </button>
+          </div>
+
+          ${
+            activePlayer
+              ? `<div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                  <input
+                    type="text"
+                    id="rename-active-player-input"
+                    class="search-input"
+                    value="${escapeHtml(activePlayer.name)}"
+                    maxlength="24"
+                    style="width:145px; padding:0.28rem 0.5rem; font-size:0.78rem;"
+                    aria-label="Rename active player"
+                  />
+                  <button type="button" class="inspect-btn" id="save-rename-player-btn">Rename 名前変更</button>
+                  ${
+                    state.contest.players.length > 1
+                      ? `<button type="button" class="inspect-btn" id="delete-active-player-btn" style="color:var(--higashi-primary);">🗑 Remove</button>`
+                      : ""
+                  }
+                </div>`
+              : ""
+          }
+        </div>
+      </div>
+
+      <!-- Two-Column Grid: Live Leaderboard + Tiebreaker & Multi-Phone Share/Import -->
+      <div class="contest-grid-layout">
+        <!-- Left Card: Live Leaderboard ("Who Pays the Tab? 💸") -->
+        <div class="contest-card">
+          <h3>
+            <span>🏆 Live Leaderboard — Who Pays the Tab? (順位表・ゴチ決定戦)</span>
+            <span style="font-size:0.74rem; font-family:var(--font-sans); color:var(--text-muted);">
+              ${scopeBouts.length} Bouts in Scope
+            </span>
+          </h3>
+          <p style="font-size:0.79rem; color:var(--text-secondary);">
+            1 pt per correct winner. Ties are broken by <strong>Musubi no Ichiban (#21) Kimarite</strong> and closest <strong>Kenshō-maku banner count</strong> so one person unequivocally pays!
+          </p>
+          <div class="leaderboard-list">
+            ${leaderboardHtml}
+          </div>
+        </div>
+
+        <!-- Right Column: Tiebreaker + Pass-and-Play / Share Link & Import -->
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <!-- Musubi no Ichiban Tiebreaker Card -->
+          <div class="contest-card">
+            <h3>
+              <span>🎌 Musubi no Ichiban Tiebreaker (結びの一番タイブレーク)</span>
+            </h3>
+            <p style="font-size:0.78rem; color:var(--text-secondary);">
+              Final Bout: <strong>${musubiEast ? musubiEast.shikonaKanji + " (" + musubiEast.romaji + ")" : "East"}</strong> vs. <strong>${musubiWest ? musubiWest.shikonaKanji + " (" + musubiWest.romaji + ")" : "West"}</strong>.
+              Set <strong>${activePlayer ? escapeHtml(activePlayer.name) : "Player"}'s</strong> tiebreaker call:
+            </p>
+            <div style="display:flex; flex-direction:column; gap:0.55rem;">
+              <div>
+                <label for="tb-kimarite-select" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
+                  1. Predicted Winning Kimarite (決まり手予想):
+                </label>
+                <select id="tb-kimarite-select" class="select-input" style="width:100%;">
+                  ${kimariteOptionsHtml}
+                </select>
+              </div>
+              <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+                <div style="flex:1; min-width:130px;">
+                  <label for="tb-kensho-input" style="font-size:0.74rem; font-weight:700; display:block; margin-bottom:0.2rem;">
+                    2. ${activePlayer ? escapeHtml(activePlayer.name) : "Player"}'s Kenshō Call (予想懸賞本数 0–60):
+                  </label>
+                  <input
+                    type="number"
+                    id="tb-kensho-input"
+                    class="select-input"
+                    min="0"
+                    max="60"
+                    value="${activeTb.kenshoCount ?? 15}"
+                    style="width:100%;"
+                  />
+                </div>
+                <div style="flex:1; min-width:130px;">
+                  <label for="actual-musubi-kensho-input" style="font-size:0.74rem; font-weight:700; color:var(--gold-primary); display:block; margin-bottom:0.2rem;">
+                    🎌 Actual Ring Kenshō (実際の懸賞本数):
+                  </label>
+                  <input
+                    type="number"
+                    id="actual-musubi-kensho-input"
+                    class="select-input"
+                    min="0"
+                    max="60"
+                    placeholder="Enter when paraded..."
+                    value="${actualKenshoVal}"
+                    style="width:100%;"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Share & Import Card (Multi-Phone Zero-Backend Sync) -->
+          <div class="contest-card">
+            <h3>
+              <span>📲 Share or Import Picks (LINE / AirDrop / URL同期)</span>
+            </h3>
+            <p style="font-size:0.78rem; color:var(--text-secondary);">
+              Everyone picking on their own phone? Tap <strong>Share Link</strong> to send your picks via LINE/iMessage/AirDrop, or paste a friend's link/code below to merge into the leaderboard!
+            </p>
+            <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
+              <button type="button" class="action-btn" id="share-active-player-btn">
+                📤 Share ${activePlayer ? escapeHtml(activePlayer.name) : "My"}'s Picks Link
+              </button>
+              <button type="button" class="inspect-btn" id="share-all-group-btn">
+                📤 Share All Group Picks (${state.contest.players.length})
+              </button>
+            </div>
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.2rem;">
+              <input
+                type="text"
+                id="import-picks-input"
+                class="search-input"
+                placeholder="Paste friend's Share Link or Code here..."
+                style="flex:1; min-width:180px; font-size:0.78rem;"
+                aria-label="Paste friend's share link or code"
+              />
+              <button type="button" class="action-btn" id="import-picks-submit-btn">
+                📥 Import Friend
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rapid Pick Sheet (一括予想シート) -->
+      <div class="contest-card">
+        <h3>
+          <span>⚡ Rapid Pick Sheet for <span style="color:var(--higashi-primary);">${activePlayer ? escapeHtml(activePlayer.name) : "Player"}</span> (一括予想シート)</span>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+            <button type="button" class="inspect-btn" id="autofill-remaining-picks-btn">
+              🎲 Auto-Fill Remaining (おまかせ選択)
+            </button>
+            <button type="button" class="inspect-btn" id="clear-active-picks-btn">
+              🗑 Clear ${activePlayer ? escapeHtml(activePlayer.name) : ""}'s Picks
+            </button>
+          </div>
+        </h3>
+        <p style="font-size:0.78rem; color:var(--text-secondary);">
+          Tap East (<strong style="color:var(--higashi-primary);">東</strong>) or West (<strong style="color:var(--nishi-primary);">西</strong>) down the card to lock in all ${scopeBouts.length} bouts in seconds. Switch active player above to pass the phone!
+        </p>
+        <div class="rapid-pick-list">
+          ${rapidRowsHtml}
+        </div>
+      </div>
+    `;
   }
 
   /* ========================================================================
@@ -1105,6 +1904,9 @@
         document.querySelectorAll(".tab-panel").forEach((p) => {
           p.classList.toggle("active", p.id === `panel-${targetTab}`);
         });
+        if (targetTab === "predictions") {
+          renderPredictionsTab();
+        }
       });
     });
 
@@ -1113,6 +1915,7 @@
       state.selectedBashoId = e.target.value;
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
+      renderPredictionsTab();
       syncWithLiveSumoApi();
     });
 
@@ -1124,6 +1927,7 @@
       initDayStrip();
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
+      renderPredictionsTab();
       syncWithLiveSumoApi();
     });
 
@@ -1199,8 +2003,217 @@
     // Kensho Calculator
     document.getElementById("kensho-input").addEventListener("input", updateKenshoCalculator);
 
-    // Delegated clicks for Rikishi Inspector, Watchlist Stars, and Winner Markers
+    // Delegated change events for Tab 5 Tiebreakers
+    document.body.addEventListener("change", (e) => {
+      if (e.target.id === "tb-kimarite-select") {
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer) return;
+        const dayKey = getContestDayKey();
+        if (!activePlayer.tiebreakers) activePlayer.tiebreakers = {};
+        const cur = activePlayer.tiebreakers[dayKey] || { kimariteId: "yorikiri", kenshoCount: 15 };
+        cur.kimariteId = e.target.value;
+        activePlayer.tiebreakers[dayKey] = cur;
+        saveContestState();
+        renderPredictionsTab();
+      } else if (e.target.id === "tb-kensho-input") {
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer) return;
+        const dayKey = getContestDayKey();
+        if (!activePlayer.tiebreakers) activePlayer.tiebreakers = {};
+        const cur = activePlayer.tiebreakers[dayKey] || { kimariteId: "yorikiri", kenshoCount: 15 };
+        cur.kenshoCount = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
+        activePlayer.tiebreakers[dayKey] = cur;
+        saveContestState();
+        renderPredictionsTab();
+      } else if (e.target.id === "actual-musubi-kensho-input") {
+        const dayKey = getContestDayKey();
+        const rawVal = e.target.value.trim();
+        if (rawVal === "") {
+          delete state.contest.actualMusubiKensho[dayKey];
+        } else {
+          state.contest.actualMusubiKensho[dayKey] = Math.max(0, Math.min(60, parseInt(rawVal, 10) || 0));
+        }
+        saveContestState();
+        renderPredictionsTab();
+      }
+    });
+
+    // Delegated clicks for Rikishi Inspector, Watchlist Stars, Winner Markers, and Predictions Contest
     document.body.addEventListener("click", (e) => {
+      const openTabEl = e.target.closest("[data-open-tab]");
+      if (openTabEl) {
+        const tabName = openTabEl.getAttribute("data-open-tab");
+        const tabBtn = document.getElementById(`tab-btn-${tabName}`);
+        if (tabBtn) tabBtn.click();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
+      const selectPlayerEl = e.target.closest("[data-select-player]");
+      if (selectPlayerEl) {
+        state.contest.activePlayerId = selectPlayerEl.getAttribute("data-select-player");
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      const addPlayerEl = e.target.closest("[data-contest-add-player]");
+      if (addPlayerEl) {
+        const nextNum = state.contest.players.length + 1;
+        const newPlayer = {
+          id: "p_" + Date.now().toString(36),
+          name: `Player ${nextNum}`,
+          color: PLAYER_COLORS[(nextNum - 1) % PLAYER_COLORS.length],
+          picks: {},
+          tiebreakers: {}
+        };
+        state.contest.players.push(newPlayer);
+        state.contest.activePlayerId = newPlayer.id;
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        const renameInput = document.getElementById("rename-active-player-input");
+        if (renameInput && state.activeTab === "predictions") {
+          renameInput.focus();
+          renameInput.select();
+        }
+        return;
+      }
+
+      if (e.target.id === "save-rename-player-btn") {
+        const input = document.getElementById("rename-active-player-input");
+        const activePlayer = getActiveContestPlayer();
+        if (input && activePlayer) {
+          const cleaned = input.value.trim().slice(0, 24);
+          if (cleaned) {
+            activePlayer.name = cleaned;
+            saveContestState();
+            renderTorikumiList();
+            renderPredictionsTab();
+          }
+        }
+        return;
+      }
+
+      if (e.target.id === "delete-active-player-btn") {
+        if (state.contest.players.length <= 1) return;
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer) return;
+        state.contest.players = state.contest.players.filter((p) => p.id !== activePlayer.id);
+        state.contest.activePlayerId = state.contest.players[0].id;
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      const scopePillEl = e.target.closest("[data-contest-scope]");
+      if (scopePillEl) {
+        state.contest.contestScope = scopePillEl.getAttribute("data-contest-scope");
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      const pickBoutEl = e.target.closest("[data-pick-bout]");
+      if (pickBoutEl) {
+        const bKey = pickBoutEl.getAttribute("data-pick-bout");
+        const side = pickBoutEl.getAttribute("data-pick-side");
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer) return;
+        if (!activePlayer.picks) activePlayer.picks = {};
+        if (activePlayer.picks[bKey] === side) {
+          delete activePlayer.picks[bKey];
+        } else {
+          activePlayer.picks[bKey] = side;
+        }
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      if (e.target.id === "autofill-remaining-picks-btn") {
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer) return;
+        if (!activePlayer.picks) activePlayer.picks = {};
+        const scopeBouts = getBoutsInContestScope();
+        scopeBouts.forEach((bout, idx) => {
+          const bKey = getBoutKey(bout);
+          if (!activePlayer.picks[bKey]) {
+            activePlayer.picks[bKey] = (bout.boutNo + idx) % 2 === 0 ? "East" : "West";
+          }
+        });
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      if (e.target.id === "clear-active-picks-btn") {
+        const activePlayer = getActiveContestPlayer();
+        if (!activePlayer || !activePlayer.picks) return;
+        const scopeBouts = getBoutsInContestScope();
+        scopeBouts.forEach((bout) => {
+          delete activePlayer.picks[getBoutKey(bout)];
+        });
+        saveContestState();
+        renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      if (e.target.id === "share-active-player-btn" || e.target.id === "share-all-group-btn") {
+        const isAll = e.target.id === "share-all-group-btn";
+        const activePlayer = getActiveContestPlayer();
+        const playersToShare = isAll
+          ? state.contest.players
+          : activePlayer
+          ? [activePlayer]
+          : state.contest.players;
+        const code = buildShareCodeForPlayers(playersToShare);
+        const shareUrl = `${window.location.origin}${window.location.pathname}?importPicks=${code}`;
+        const label = isAll
+          ? `All ${playersToShare.length} players`
+          : activePlayer
+          ? activePlayer.name
+          : "My";
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(shareUrl).catch(() => {});
+        }
+        showContestToast(`✓ Copied ${label}'s Share Link to clipboard! Send it via LINE/iMessage/AirDrop.`);
+
+        if (navigator.share) {
+          navigator
+            .share({
+              title: `Dohyō Guide — ${label}'s Sumo Predictions`,
+              text: `Import ${label}'s Sumo Contest Picks (Loser Pays Everything! 💸):`,
+              url: shareUrl
+            })
+            .catch(() => {});
+        }
+        return;
+      }
+
+      if (e.target.id === "import-picks-submit-btn") {
+        const input = document.getElementById("import-picks-input");
+        if (!input || !input.value.trim()) return;
+        try {
+          const decoded = decodeContestSharePayload(input.value.trim());
+          const names = importDecodedPayload(decoded);
+          input.value = "";
+          renderTorikumiList();
+          renderPredictionsTab();
+          showContestToast(`✓ Imported ${names.join(", ")}'s picks into the leaderboard!`);
+        } catch (err) {
+          showContestToast("⚠ Invalid Share Link or Code. Please copy the full link or code from your friend.");
+        }
+        return;
+      }
+
       const inspectRikishiEl = e.target.closest("[data-inspect-rikishi]");
       if (inspectRikishiEl) {
         openRikishiModal(inspectRikishiEl.getAttribute("data-inspect-rikishi"));
@@ -1243,7 +2256,19 @@
           side,
           kimariteId: kimariteById.has(move) ? move : "yorikiri"
         };
+        saveSimulatedWinners();
         renderTorikumiList();
+        renderPredictionsTab();
+        return;
+      }
+
+      const clearWinnerEl = e.target.closest("[data-clear-winner]");
+      if (clearWinnerEl) {
+        const boutKey = clearWinnerEl.getAttribute("data-clear-winner");
+        delete state.simulatedWinners[boutKey];
+        saveSimulatedWinners();
+        renderTorikumiList();
+        renderPredictionsTab();
         return;
       }
 
@@ -1271,6 +2296,7 @@
     renderRikishiDirectory();
     renderKimariteExplorer();
     renderVenueGuide();
+    renderPredictionsTab();
   }
 
   document.addEventListener("DOMContentLoaded", init);

@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261116c" />
+  <link rel="stylesheet" href="styles.css?v=20261116e" />
 </head>
 <body data-lang="dual">
   <!-- Traditional Higashi (East Crimson) / Gold / Nishi (West Indigo) Noren Stripe -->
@@ -60,7 +60,7 @@
         </div>
       </div>
 
-      <!-- 4 Core Navigation Tabs -->
+      <!-- 5 Core Navigation Tabs -->
       <nav class="nav-tabs" aria-label="Main Sumo Sections">
         <button type="button" class="nav-tab-btn active" id="tab-btn-torikumi" data-tab="torikumi">
           <span class="tab-jp"><ruby>取<rt>とり</rt></ruby><ruby>組<rt>くみ</rt></ruby>・見どころ</span>
@@ -77,6 +77,10 @@
         <button type="button" class="nav-tab-btn" id="tab-btn-venue" data-tab="venue">
           <span class="tab-jp"><ruby>観<rt>かん</rt></ruby><ruby>戦<rt>せん</rt></ruby>・<ruby>儀<rt>ぎ</rt></ruby><ruby>礼<rt>れい</rt></ruby></span>
           <span class="tab-en">4. Arena Guide</span>
+        </button>
+        <button type="button" class="nav-tab-btn" id="tab-btn-predictions" data-tab="predictions">
+          <span class="tab-jp"><ruby>予<rt>よ</rt></ruby><ruby>想<rt>そう</rt></ruby><ruby>対<rt>たい</rt></ruby><ruby>決<rt>けつ</rt></ruby></span>
+          <span class="tab-en">5. Predictions</span>
         </button>
       </nav>
     </div>
@@ -165,6 +169,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Inline Contest Picker Bar (Pass-and-Play & Live Standings Summary) -->
+      <div class="contest-picker-bar" id="inline-contest-picker-bar"></div>
 
       <!-- Dynamic Bout Cards Container -->
       <div class="bout-list" id="bout-list-container"></div>
@@ -387,6 +394,37 @@
         <div class="kimarite-grid" id="vocab-grid-container"></div>
       </div>
     </section>
+
+    <!-- ====================================================================
+         TAB 5: PREDICTIONS & "LOSER PAYS EVERYTHING" CONTEST (予想対決・全額ゴチ！)
+         ==================================================================== -->
+    <section class="tab-panel" id="panel-predictions" aria-labelledby="tab-btn-predictions">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only">🏆 大相撲<ruby>予<rt>よ</rt></ruby><ruby>想<rt>そう</rt></ruby><ruby>対<rt>たい</rt></ruby><ruby>決<rt>けつ</rt></ruby>・最下位は全額ゴチ！💸</span>
+              <span class="lang-en-only">🏆 Sumo Prediction Contest — Loser Pays Everything! 💸</span>
+            </h2>
+            <p class="lang-en-only">
+              Make East vs. West picks with friends in the arena (Pass-and-Play on one phone or sync across multiple phones via instant shareable link/code). <strong>1 point per correct winner</strong>—and the last-place finisher pays the entire post-sumo Chankonabe &amp; Izakaya tab!
+            </p>
+            <p class="lang-jp-only">
+              会場で友達と勝敗予想バトル！1台のスマホで順番に選ぶ「パス＆プレイ」にも、各自のスマホからリンク／コードで一括取り込みにも対応。<strong>白星的中1点＋結びの一番タイブレーク</strong>で、最下位が打ち上げ代を全額ゴチ！
+            </p>
+          </div>
+          <div class="api-status-badge" id="contest-day-badge">
+            <span>🏮 2026-11-16 • Day 9 Contest</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast / Banner for Imported Picks or Share Confirmation -->
+      <div class="contest-toast-banner" id="contest-toast-banner" style="display:none;" role="status" aria-live="polite"></div>
+
+      <!-- Dynamic Contest Dashboard Container (Scope, Leaderboard, Players, Tiebreaker, Share/Import, Rapid Pick Sheet) -->
+      <div id="predictions-dashboard-container"></div>
+    </section>
   </main>
 
   <!-- ======================================================================
@@ -399,8 +437,8 @@
     </div>
   </div>
 
-  <script src="data/sumoData.js?v=20261116c"></script>
-  <script src="app.js?v=20261116c"></script>
+  <script src="data/sumoData.js?v=20261116e"></script>
+  <script src="app.js?v=20261116e"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
