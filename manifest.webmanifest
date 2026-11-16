@@ -1,0 +1,25 @@
+{
+  "name": "Dohyō Guide (土俵ガイド) — Grand Sumo Companion",
+  "short_name": "Dohyō Guide",
+  "description": "Bilingual (EN/JP) Grand Sumo tournament companion — all-division Torikumi, Shikona kanji breakdowns, Kimarite explorer & Arena Guide.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF6EE",
+  "theme_color": "#B91C1C",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
