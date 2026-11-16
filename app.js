@@ -371,6 +371,7 @@
     const dateStr = getDayDateStr(basho, state.selectedDay);
 
     watchlistCountEl.textContent = state.starredBouts.size + state.starredRikishi.size;
+    renderDenkoScoreboardPreview();
 
     const query = state.torikumiSearch.trim().toLowerCase();
 
@@ -854,7 +855,66 @@
       )
       .join("");
 
+    renderDenkoScoreboardPreview();
     updateKenshoCalculator();
+  }
+
+  function renderDenkoScoreboardPreview() {
+    const boardEl = document.getElementById("denko-board-mockup");
+    if (!boardEl) return;
+
+    const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
+    const dateStr = getDayDateStr(basho, state.selectedDay);
+
+    const topBouts = state.boutsForCurrentSelection
+      .slice()
+      .sort((a, b) => b.boutNo - a.boutNo)
+      .slice(0, 3);
+
+    if (topBouts.length === 0) return;
+
+    const rowsHtml = topBouts
+      .map((bout, idx) => {
+        const east = rikishiById.get(bout.eastId);
+        const west = rikishiById.get(bout.westId);
+        if (!east || !west) return "";
+
+        const boutKey = `${state.selectedBashoId}-D${state.selectedDay}-B${bout.boutNo}`;
+        const sim = state.simulatedWinners[boutKey];
+        const effectiveWinner = sim ? sim.side : bout.winnerSide;
+        const effectiveKimariteId = sim ? sim.kimariteId : bout.kimariteId;
+        const kimariteObj = effectiveKimariteId ? kimariteById.get(effectiveKimariteId) : null;
+
+        // If decided, show real ○/● and kimarite; otherwise show example ○ vs ● for legend
+        const eastCircle =
+          effectiveWinner === "West" ? "kuroboshi-circle" : "shiroboshi-circle";
+        const westCircle =
+          effectiveWinner === "West" ? "shiroboshi-circle" : "kuroboshi-circle";
+        const centerLabel = kimariteObj
+          ? `${kimariteObj.kanji} (${kimariteObj.romaji})`
+          : bout.boutNo === 21
+          ? "結びの一番 (Final)"
+          : `#${bout.boutNo} • ${bout.approxTime}`;
+
+        const isLast = idx === topBouts.length - 1;
+        return `
+          <div class="denko-row" ${isLast ? 'style="border-bottom:none;"' : ""}>
+            <div><span class="${eastCircle}" title="○ = Win / ● = Loss"></span> <strong>${east.shikonaKanji}</strong> (${east.romaji})</div>
+            <span style="font-size:0.75rem; color:#FBBF24;">${centerLabel}</span>
+            <div><span class="${westCircle}" title="○ = Win / ● = Loss"></span> <strong>${west.shikonaKanji}</strong> (${west.romaji})</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    boardEl.innerHTML = `
+      <div class="denko-row" style="font-size:0.74rem; color:#9E9689;">
+        <span>東 HIGASHI (East)</span>
+        <span>${dateStr} • Day ${state.selectedDay} (例/Example)</span>
+        <span>西 NISHI (West)</span>
+      </div>
+      ${rowsHtml}
+    `;
   }
 
   function updateKenshoCalculator() {

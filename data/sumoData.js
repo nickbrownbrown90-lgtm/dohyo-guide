@@ -3043,8 +3043,8 @@ window.SUMO_DATA = {
       time: "15:55",
       titleEn: "Yokozuna Dohyō-iri (Grand Champion Ceremony)",
       titleJp: "横綱土俵入り（露払い・太刀持ち従え）",
-      descEn: "Yokozuna Terunofuji enters flanked by a *Tsuyuharai* (dew-sweeper) and *Tachimochi* (sword-bearer), wearing the sacred white hemp *tsuna* rope. Shout 'Yoisho!' in unison with the crowd when he stamps his feet (*shiko*)!",
-      descJp: "純白の綱を締めた横綱が露払い・太刀持ちを従えて登場（照ノ富士は不知火型）。四股を踏む瞬間の「よいしょ！」の掛け声は会場一体となります。",
+      descEn: "Yokozuna Onosato and Hōshōryū enter flanked by a Tsuyuharai (dew-sweeper) and Tachimochi (sword-bearer), wearing the sacred white hemp tsuna rope. Shout 'Yoisho!' in unison with the crowd when they stamp their feet (shiko)!",
+      descJp: "東横綱・大の里と西横綱・豊昇龍が露払い・太刀持ちを従えて純白の綱を締めて登場。四股を踏む瞬間の「よいしょ！」の掛け声は会場一体となります。",
       highlight: true
     },
     {
