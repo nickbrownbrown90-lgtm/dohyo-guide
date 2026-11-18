@@ -1,13 +1,13 @@
 /* ==========================================================================
    Dohyō Guide (土俵ガイド) — Offline-First PWA Service Worker
    ========================================================================== */
-const CACHE_NAME = "dohyo-guide-v20261118a";
+const CACHE_NAME = "dohyo-guide-v20261118b";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20261118a",
-  "./data/sumoData.js?v=20261118a",
-  "./app.js?v=20261118a",
+  "./styles.css?v=20261118b",
+  "./data/sumoData.js?v=20261118b",
+  "./app.js?v=20261118b",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

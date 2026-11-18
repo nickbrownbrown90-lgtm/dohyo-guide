@@ -77,13 +77,44 @@
     };
   }
 
+  function getTodayJstDateStr() {
+    const nowJst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return nowJst.toISOString().slice(0, 10);
+  }
+
+  function detectCurrentBashoAndDay() {
+    const todayJst = getTodayJstDateStr();
+    const todayMs = Date.parse(`${todayJst}T00:00:00Z`);
+    const sorted = [...DATA.bashoList].sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    for (const b of sorted) {
+      const startMs = Date.parse(`${b.startDate}T00:00:00Z`);
+      const diffDays = Math.floor((todayMs - startMs) / 86400000);
+      if (diffDays >= 0 && diffDays < 15) {
+        return { bashoId: b.id, day: diffDays + 1 };
+      }
+    }
+
+    let latestPast = null;
+    for (const b of sorted) {
+      const startMs = Date.parse(`${b.startDate}T00:00:00Z`);
+      if (startMs <= todayMs) latestPast = b;
+    }
+    if (latestPast) {
+      return { bashoId: latestPast.id, day: 15 };
+    }
+    return { bashoId: sorted[0].id, day: 1 };
+  }
+
+  const INITIAL_BASHO_DAY = detectCurrentBashoAndDay();
+
   // Application State
   const state = {
     activeTab: "torikumi",
     langMode: localStorage.getItem("dohyo_lang") || "dual",
     theme: localStorage.getItem("dohyo_theme") || "washi",
-    selectedBashoId: "202611",
-    selectedDay: 9, // Defaults to Day 9 (2026-11-16 JST)
+    selectedBashoId: INITIAL_BASHO_DAY.bashoId,
+    selectedDay: INITIAL_BASHO_DAY.day,
     boutOrder: localStorage.getItem("dohyo_bout_order") || "desc", // "desc" = Last Match First, "asc" = Last Match at Bottom
     divisionFilter: "all",
     torikumiFilter: "all",
