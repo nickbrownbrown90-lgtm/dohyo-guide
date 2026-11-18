@@ -1930,6 +1930,7 @@ body[data-lang="jp"] rt {
     flex: 1 1 100%;
   }
   .nav-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.22rem;
   }
   .nav-tab-btn {
@@ -1980,10 +1981,377 @@ body[data-lang="jp"] rt {
   .kensho-breakdown-grid {
     grid-template-columns: 1fr;
   }
+  .matchup-columns-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 420px) {
   .roster-grid-4p {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================================================
+   TAB 6: STANDINGS LEADERBOARD & POTENTIAL FINAL-DAYS MATCHUPS
+   ========================================================================== */
+.standings-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.15rem;
+}
+
+.standings-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.standings-header-row h3 {
+  font-family: var(--font-mincho);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.standings-meta-pill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+}
+
+.standings-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.standings-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0.45rem 0.5rem;
+  border-bottom: 2px solid var(--border-medium);
+  white-space: nowrap;
+}
+
+.standings-table td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.standings-row {
+  transition: background-color var(--transition-fast);
+}
+
+.standings-row:hover {
+  background: var(--bg-secondary);
+}
+
+.standings-row.is-selected {
+  background: var(--gold-bg);
+}
+
+.standings-row.is-leader .standing-pos {
+  background: var(--gold-accent);
+  color: #111;
+}
+
+.standing-pos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.85rem;
+  height: 1.65rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.78rem;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.standings-rank-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.14rem 0.42rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.standings-rank-tag.east {
+  border-left: 3px solid var(--higashi-primary);
+}
+
+.standings-rank-tag.west {
+  border-left: 3px solid var(--nishi-primary);
+}
+
+.standings-shikona-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.standings-shikona-btn:hover .standings-shikona-main {
+  text-decoration: underline;
+  color: var(--higashi-primary);
+}
+
+.standings-shikona-main {
+  font-family: var(--font-mincho);
+  font-weight: 800;
+  font-size: 0.96rem;
+  line-height: 1.2;
+}
+
+.standings-shikona-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.standings-record-pill {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.82rem;
+  padding: 0.16rem 0.48rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  white-space: nowrap;
+}
+
+.standings-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.standings-badge.leader {
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border: 1px solid var(--gold-border);
+}
+
+.standings-badge.kk {
+  background: rgba(21, 128, 61, 0.12);
+  color: #15803d;
+  border: 1px solid rgba(21, 128, 61, 0.35);
+}
+
+[data-theme="dark"] .standings-badge.kk {
+  color: #4ade80;
+}
+
+.standings-badge.kyujo {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-medium);
+}
+
+.matchup-inspector-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.9rem;
+}
+
+.matchup-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.matchup-col-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+}
+
+.matchup-col-title {
+  font-family: var(--font-mincho);
+  font-size: 0.92rem;
+  font-weight: 800;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.matchup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.matchup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.48rem 0.6rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.matchup-item-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.matchup-item-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.likelihood-pill {
+  font-size: 0.67rem;
+  font-weight: 800;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.likelihood-pill.very-likely {
+  background: var(--higashi-bg);
+  color: var(--higashi-text);
+  border: 1px solid var(--higashi-border);
+}
+
+.likelihood-pill.likely {
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  border: 1px solid var(--gold-border);
+}
+
+.likelihood-pill.possible {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+}
+
+.clash-matrix-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.5rem;
+}
+
+.clash-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.clash-matrix-table th,
+.clash-matrix-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 0.42rem 0.45rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.clash-matrix-table th {
+  background: var(--bg-secondary);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.clash-matrix-table td.row-label {
+  text-align: left;
+  background: var(--bg-secondary);
+  font-weight: 700;
+}
+
+.clash-cell-self {
+  background: var(--bg-subtle);
+  color: var(--text-faint);
+}
+
+.clash-cell-unfought {
+  background: var(--gold-bg);
+  color: var(--gold-primary);
+  font-weight: 800;
+}
+
+.clash-cell-heya {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.clash-cell-win {
+  background: rgba(21, 128, 61, 0.12);
+  color: #15803d;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .clash-cell-win {
+  color: #4ade80;
+}
+
+.clash-cell-loss {
+  background: var(--higashi-bg);
+  color: var(--higashi-text);
+  font-weight: 700;
+}
+
+/* Hide Competition / Contest UI */
+#tab-btn-predictions,
+#panel-predictions,
+#inline-contest-picker-bar,
+.bout-prediction-strip {
+  display: none !important;
 }

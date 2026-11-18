@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261116g" />
+  <link rel="stylesheet" href="styles.css?v=20261118a" />
 </head>
 <body data-lang="dual">
   <!-- Traditional Higashi (East Crimson) / Gold / Nishi (West Indigo) Noren Stripe -->
@@ -78,9 +78,13 @@
           <span class="tab-jp"><ruby>観<rt>かん</rt></ruby><ruby>戦<rt>せん</rt></ruby>・<ruby>儀<rt>ぎ</rt></ruby><ruby>礼<rt>れい</rt></ruby></span>
           <span class="tab-en">4. Arena Guide</span>
         </button>
-        <button type="button" class="nav-tab-btn" id="tab-btn-predictions" data-tab="predictions">
+        <button type="button" class="nav-tab-btn" id="tab-btn-predictions" data-tab="predictions" hidden style="display:none;">
           <span class="tab-jp"><ruby>予<rt>よ</rt></ruby><ruby>想<rt>そう</rt></ruby><ruby>対<rt>たい</rt></ruby><ruby>決<rt>けつ</rt></ruby></span>
-          <span class="tab-en">5. Predictions</span>
+          <span class="tab-en">Predictions</span>
+        </button>
+        <button type="button" class="nav-tab-btn" id="tab-btn-standings" data-tab="standings">
+          <span class="tab-jp"><ruby>星<rt>ほし</rt></ruby><ruby>取<rt>とり</rt></ruby>・<ruby>優<rt>ゆう</rt></ruby><ruby>勝<rt>しょう</rt></ruby>争い</span>
+          <span class="tab-en">5. Standings &amp; Race</span>
         </button>
       </nav>
     </div>
@@ -428,6 +432,71 @@
       <!-- Dynamic Contest Dashboard Container (4-Player Roster, Leaderboard, Tiebreaker, Pass-and-Play + 4-Player Matrix Sheet) -->
       <div id="predictions-dashboard-container"></div>
     </section>
+
+    <!-- ====================================================================
+         TAB 6: STANDINGS, LEADERBOARD & FINAL-DAYS MATCHUPS (星取表・優勝争い)
+         ==================================================================== -->
+    <section class="tab-panel" id="panel-standings" aria-labelledby="tab-btn-standings">
+      <div class="banzuke-banner">
+        <div class="banner-header-row">
+          <div class="banner-title-block">
+            <h2>
+              <span class="lang-jp-only">🏆 <ruby>全<rt>ぜん</rt></ruby><ruby>階<rt>かい</rt></ruby><ruby>級<rt>きゅう</rt></ruby><ruby>星<rt>ほし</rt></ruby><ruby>取<rt>とり</rt></ruby>リーダーボード＆<ruby>終<rt>しゅう</rt></ruby><ruby>盤<rt>ばん</rt></ruby><ruby>戦<rt>せん</rt></ruby><ruby>予<rt>よ</rt></ruby><ruby>想<rt>そう</rt></ruby>カード</span>
+              <span class="lang-en-only">🏆 All-Division Leaderboard &amp; Potential Final-Days Matchups</span>
+            </h2>
+            <p class="lang-en-only">
+              Track the Yūshō title race across all 6 divisions (<strong>Makuuchi</strong> through <strong>Jonokuchi</strong>). Select any wrestler to see who they have already fought and their most likely opponents for the final days of the basho.
+            </p>
+            <p class="lang-jp-only">
+              幕内から序ノ口まで全6階級の星取ランキングと優勝争いを一覧できます。力士を選ぶと、今場所すでに戦った相手と、終盤戦（残りの取組）で対戦が予想される有力候補を確認できます。
+            </p>
+          </div>
+          <div class="api-status-badge" id="standings-status-badge">
+            <span class="status-dot" id="standings-status-dot"></span>
+            <span id="standings-status-text">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Division, Top-N Cutoff, & Search Controls -->
+      <div class="torikumi-controls">
+        <div class="controls-top-row">
+          <div class="filter-pills" id="standings-division-pills" role="group" aria-label="Select Sumo Division for Standings">
+            <button type="button" class="filter-pill active" data-division="Makuuchi">Makuuchi 幕内</button>
+            <button type="button" class="filter-pill" data-division="Juryo">Juryo 十両</button>
+            <button type="button" class="filter-pill" data-division="Makushita">Makushita 幕下</button>
+            <button type="button" class="filter-pill" data-division="Sandanme">Sandanme 三段目</button>
+            <button type="button" class="filter-pill" data-division="Jonidan">Jonidan 序二段</button>
+            <button type="button" class="filter-pill" data-division="Jonokuchi">Jonokuchi 序ノ口</button>
+          </div>
+        </div>
+
+        <div class="filter-pills-row" style="padding-top:0.55rem;">
+          <div class="filter-pills" id="standings-topn-pills" role="group" aria-label="Top Wrestlers Cutoff">
+            <button type="button" class="filter-pill" data-topn="10">Top 10</button>
+            <button type="button" class="filter-pill active" data-topn="15">Top 15</button>
+            <button type="button" class="filter-pill" data-topn="25">Top 25</button>
+            <button type="button" class="filter-pill" data-topn="all">All 全員</button>
+          </div>
+          <div class="control-group" style="flex:1; justify-content:flex-end;">
+            <input
+              type="search"
+              id="standings-search"
+              class="search-input"
+              style="max-width:300px;"
+              placeholder="Filter wrestler, kanji, or heya..."
+              aria-label="Filter standings by wrestler name or heya"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Division Leaderboard -->
+      <div id="standings-leaderboard-container"></div>
+
+      <!-- Potential Final-Days Matchups & Contenders Clash Matrix -->
+      <div id="standings-matchups-container"></div>
+    </section>
   </main>
 
   <!-- ======================================================================
@@ -440,8 +509,8 @@
     </div>
   </div>
 
-  <script src="data/sumoData.js?v=20261116g"></script>
-  <script src="app.js?v=20261116g"></script>
+  <script src="data/sumoData.js?v=20261118a"></script>
+  <script src="app.js?v=20261118a"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

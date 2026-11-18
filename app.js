@@ -97,7 +97,14 @@
     simulatedWinners: JSON.parse(localStorage.getItem("dohyo_sim_winners") || "{}"), // boutKey -> { side: 'East'|'West', kimariteId: string }
     boutsForCurrentSelection: [],
     contest: loadContestState(),
-    editingPlayerId: null
+    editingPlayerId: null,
+    standings: {
+      division: "Makuuchi",
+      topN: "15",
+      search: "",
+      selectedRikishiId: null,
+      loading: false
+    }
   };
 
   function saveContestState() {
@@ -770,6 +777,7 @@
         renderTorikumiList();
         renderRikishiDirectory();
         renderPredictionsTab();
+        if (state.activeTab === "standings") renderStandingsTab();
         return;
       }
       throw new Error("Empty torikumi payload");
@@ -780,6 +788,7 @@
       updateDivisionPills();
       renderTorikumiList();
       renderPredictionsTab();
+      if (state.activeTab === "standings") renderStandingsTab();
     }
   }
 
@@ -2277,6 +2286,761 @@
   }
 
   /* ========================================================================
+     Tab 6 Renderer: All-Division Leaderboard & Potential Final-Days Matchups
+     ======================================================================== */
+  const divisionHistoryCache = new Map(); // `${bashoApiId}_${division}_${upToDay}` -> { bouts, source }
+
+  function parseBanzukeOrder(rankEn) {
+    const s = String(rankEn || "");
+    const tierWeights = {
+      Yokozuna: 0,
+      Ozeki: 100,
+      Sekiwake: 200,
+      Komusubi: 300,
+      Maegashira: 400,
+      Juryo: 1000,
+      Makushita: 2000,
+      Sandanme: 3000,
+      Jonidan: 4000,
+      Jonokuchi: 5000
+    };
+    const m = s.match(
+      /(Yokozuna|Ozeki|Sekiwake|Komusubi|Maegashira|Juryo|Makushita|Sandanme|Jonidan|Jonokuchi)\s*(\d+)?\s*(East|West)?/i
+    );
+    if (!m) return 9999;
+    const tierKey = Object.keys(tierWeights).find((k) => k.toLowerCase() === m[1].toLowerCase()) || "Maegashira";
+    const num = m[2] ? parseInt(m[2], 10) : 1;
+    const sideOffset = m[3] && m[3].toLowerCase() === "west" ? 0.5 : 0;
+    return tierWeights[tierKey] + num * 2 + sideOffset;
+  }
+
+  function compactRankCode(rankEn) {
+    const m = String(rankEn || "").match(
+      /(Yokozuna|Ozeki|Sekiwake|Komusubi|Maegashira|Juryo|Makushita|Sandanme|Jonidan|Jonokuchi)\s*(\d+)?\s*(East|West)?/i
+    );
+    if (!m) return rankEn || "—";
+    const abbr = {
+      yokozuna: "Y",
+      ozeki: "O",
+      sekiwake: "S",
+      komusubi: "K",
+      maegashira: "M",
+      juryo: "J",
+      makushita: "Ms",
+      sandanme: "Sd",
+      jonidan: "Jd",
+      jonokuchi: "Jk"
+    }[m[1].toLowerCase()] || m[1].slice(0, 2);
+    const num = m[2] || (["yokozuna", "ozeki", "sekiwake", "komusubi"].includes(m[1].toLowerCase()) ? "1" : "");
+    const side = m[3] ? (m[3].toLowerCase() === "west" ? "W" : "E") : "";
+    return `${abbr}${num}${side}`;
+  }
+
+  function buildOfflineMakuuchiHistory(upToDay) {
+    const bouts = [];
+    const sanyakuPool = DATA.rikishi.slice(0, 10);
+    const maegashiraPool = DATA.rikishi.slice(10);
+    for (let d = 1; d <= upToDay; d++) {
+      if (state.selectedBashoId === "202611" && d === 9) {
+        DATA.defaultTorikumi.forEach((b) => {
+          const winnerId =
+            b.winnerSide === "East" ? b.eastId : b.winnerSide === "West" ? b.westId : null;
+          bouts.push({
+            day: d,
+            eastId: b.eastId,
+            westId: b.westId,
+            winnerId,
+            kimarite: b.kimariteId || ""
+          });
+        });
+        continue;
+      }
+      for (let i = 0; i < 5; i++) {
+        const east = sanyakuPool[i];
+        const west = sanyakuPool[5 + ((i + d) % 5)];
+        const seed = (d * 7 + i * 3) % 5;
+        bouts.push({
+          day: d,
+          eastId: east.id,
+          westId: west.id,
+          winnerId: d < 9 ? (seed % 2 === 0 ? east.id : west.id) : null,
+          kimarite: d < 9 ? (seed % 2 === 0 ? "yorikiri" : "oshidashi") : ""
+        });
+      }
+      const mCount = Math.floor(maegashiraPool.length / 2);
+      for (let j = 0; j < mCount; j++) {
+        const east = maegashiraPool[j];
+        const west = maegashiraPool[mCount + ((j + d) % mCount)];
+        const seed = (d + j * 2) % 4;
+        bouts.push({
+          day: d,
+          eastId: east.id,
+          westId: west.id,
+          winnerId: d < 9 ? (seed % 2 === 1 ? east.id : west.id) : null,
+          kimarite: d < 9 ? "yorikiri" : ""
+        });
+      }
+    }
+    return { bouts, source: "offline" };
+  }
+
+  async function ensureDivisionHistoryLoaded(bashoApiId, divisionKey, upToDay) {
+    const cacheKey = `${bashoApiId}_${divisionKey}_${upToDay}`;
+    if (divisionHistoryCache.has(cacheKey)) {
+      return divisionHistoryCache.get(cacheKey);
+    }
+
+    state.standings.loading = true;
+    const dot = document.getElementById("standings-status-dot");
+    const statusText = document.getElementById("standings-status-text");
+    if (dot) dot.classList.add("syncing");
+    if (statusText) statusText.textContent = `Loading ${divisionKey} Days 1–${upToDay}...`;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 9000);
+
+      const dayNumbers = Array.from({ length: upToDay }, (_, i) => i + 1);
+      const [, dayResults] = await Promise.all([
+        ensureRikishiAndBanzukeLoaded(bashoApiId),
+        Promise.allSettled(
+          dayNumbers.map(async (d) => {
+            const url = `https://sumo-api.com/api/basho/${bashoApiId}/torikumi/${divisionKey}/${d}`;
+            const res = await fetch(url, { signal: controller.signal });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            return { day: d, torikumi: json && Array.isArray(json.torikumi) ? json.torikumi : [] };
+          })
+        )
+      ]);
+      clearTimeout(timeout);
+
+      const bouts = [];
+      dayResults.forEach((r) => {
+        if (r.status !== "fulfilled") return;
+        const { day, torikumi } = r.value;
+        torikumi.forEach((item) => {
+          const east = resolveOrCreateRikishi(item.eastId, item.eastShikona, item.eastRank, "East");
+          const west = resolveOrCreateRikishi(item.westId, item.westShikona, item.westRank, "West");
+          let winnerId = null;
+          if (item.winnerId && item.winnerId === item.eastId) winnerId = east.id;
+          else if (item.winnerId && item.winnerId === item.westId) winnerId = west.id;
+          bouts.push({
+            day,
+            eastId: east.id,
+            westId: west.id,
+            winnerId,
+            kimarite: item.kimarite || ""
+          });
+        });
+      });
+
+      state.standings.loading = false;
+      if (dot) dot.classList.remove("syncing");
+
+      if (bouts.length > 0 || (liveBanzukeByBasho.get(bashoApiId) && liveBanzukeByBasho.get(bashoApiId).size > 0)) {
+        const result = { bouts, source: "live" };
+        divisionHistoryCache.set(cacheKey, result);
+        if (statusText) {
+          statusText.textContent = `Live API • ${divisionKey} Days 1–${upToDay} (${bouts.length} bouts)`;
+        }
+        return result;
+      }
+      throw new Error("Empty live division history");
+    } catch (_) {
+      state.standings.loading = false;
+      if (dot) dot.classList.remove("syncing");
+      const fallback =
+        divisionKey === "Makuuchi"
+          ? buildOfflineMakuuchiHistory(upToDay)
+          : { bouts: [], source: "offline" };
+      divisionHistoryCache.set(cacheKey, fallback);
+      if (statusText) {
+        statusText.textContent =
+          divisionKey === "Makuuchi"
+            ? `Offline Curated Mode (Days 1–${upToDay})`
+            : `Offline Mode (Connect to load ${divisionKey})`;
+      }
+      return fallback;
+    }
+  }
+
+  function getDivisionRosterWithRecords(bashoApiId, divisionKey, history) {
+    const bMap = liveBanzukeByBasho.get(bashoApiId);
+    const list = [];
+
+    if (bMap && bMap.size > 0) {
+      bMap.forEach((entry) => {
+        if (entry.division !== divisionKey) return;
+        const r = resolveOrCreateRikishi(entry.rikishiID, entry.shikonaEn, entry.rank, entry.side);
+        const wins = typeof entry.wins === "number" ? entry.wins : 0;
+        const losses = typeof entry.losses === "number" ? entry.losses : 0;
+        const absences = typeof entry.absences === "number" ? entry.absences : 0;
+        list.push({
+          ...r,
+          rankEn: entry.rank || r.rankEn,
+          rankJp: rankJpFromEn(entry.rank || r.rankEn),
+          wins,
+          losses,
+          absences,
+          banzukeOrder: parseBanzukeOrder(entry.rank || r.rankEn)
+        });
+      });
+    } else if (divisionKey === "Makuuchi") {
+      DATA.rikishi.forEach((r) => {
+        const parts = String(r.currentRecord || "0-0").split("-").map((n) => parseInt(n, 10) || 0);
+        list.push({
+          ...r,
+          wins: parts[0] || 0,
+          losses: parts[1] || 0,
+          absences: parts[2] || 0,
+          banzukeOrder: parseBanzukeOrder(r.rankEn)
+        });
+      });
+    }
+
+    const foughtLatest = new Set();
+    const maxDay = history && history.bouts.length > 0 ? Math.max(...history.bouts.map((b) => b.day)) : 0;
+    if (history && maxDay > 0) {
+      history.bouts.forEach((b) => {
+        if (b.day >= maxDay - 1) {
+          foughtLatest.add(b.eastId);
+          foughtLatest.add(b.westId);
+        }
+      });
+    }
+
+    list.sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (a.losses !== b.losses) return a.losses - b.losses;
+      if (a.absences !== b.absences) return a.absences - b.absences;
+      return a.banzukeOrder - b.banzukeOrder;
+    });
+
+    const leaderWins = list.length > 0 ? list[0].wins : 0;
+    const leaderLosses = list.length > 0 ? list[0].losses : 0;
+
+    let currentPos = 1;
+    list.forEach((w, idx) => {
+      if (
+        idx > 0 &&
+        (w.wins !== list[idx - 1].wins || w.losses !== list[idx - 1].losses || w.absences !== list[idx - 1].absences)
+      ) {
+        currentPos = idx + 1;
+      }
+      const isTied =
+        (idx > 0 && w.wins === list[idx - 1].wins && w.losses === list[idx - 1].losses) ||
+        (idx < list.length - 1 && w.wins === list[idx + 1].wins && w.losses === list[idx + 1].losses);
+      w.standingPos = currentPos;
+      w.isTied = isTied;
+      w.gamesBehind = ((leaderWins - w.wins) + (w.losses - leaderLosses)) / 2;
+      w.isKyujo = w.absences > 0 && maxDay > 0 && !foughtLatest.has(w.id);
+    });
+
+    return list;
+  }
+
+  function formatShikonaDisplay(r) {
+    return `
+      <span class="standings-shikona-main">
+        <span class="lang-jp-only">${r.rubyHtml || r.shikonaKanji}</span>
+        <span class="lang-en-only">${r.romaji}</span>
+      </span>
+      <span class="standings-shikona-sub">
+        <span class="lang-jp-only">${r.romaji} • ${r.heyaEn}</span>
+        <span class="lang-en-only">${r.shikonaKanji} • ${r.heyaEn}</span>
+      </span>
+    `;
+  }
+
+  function renderStandingsTab() {
+    const basho = DATA.bashoList.find((b) => b.id === state.selectedBashoId) || DATA.bashoList[0];
+    const divKey = state.standings.division;
+    const upToDay = state.selectedDay;
+    const cacheKey = `${basho.apiId}_${divKey}_${upToDay}`;
+
+    document.querySelectorAll("#standings-division-pills .filter-pill").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-division") === divKey);
+    });
+    document.querySelectorAll("#standings-topn-pills .filter-pill").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-topn") === state.standings.topN);
+    });
+
+    const cachedHistory = divisionHistoryCache.get(cacheKey);
+    if (!cachedHistory && !state.standings.loading) {
+      renderStandingsLoadingState(divKey, upToDay);
+      ensureDivisionHistoryLoaded(basho.apiId, divKey, upToDay).then(() => {
+        if (state.activeTab === "standings") {
+          renderStandingsTab();
+        }
+      });
+      return;
+    }
+
+    const history = cachedHistory || { bouts: [], source: "offline" };
+    const roster = getDivisionRosterWithRecords(basho.apiId, divKey, history);
+
+    renderStandingsLeaderboard(roster, divKey, upToDay);
+    renderStandingsMatchups(roster, history, divKey, upToDay);
+  }
+
+  function renderStandingsLoadingState(divKey, upToDay) {
+    const lb = document.getElementById("standings-leaderboard-container");
+    const mu = document.getElementById("standings-matchups-container");
+    if (lb) {
+      lb.innerHTML = `
+        <div class="standings-card" style="text-align:center; padding:2rem;">
+          <p style="font-weight:700;">⏳ Loading ${divKey} standings &amp; Days 1–${upToDay} bout history...</p>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem;">Syncing banzuke records and torikumi pairings from sumo-api.com</p>
+        </div>
+      `;
+    }
+    if (mu) mu.innerHTML = "";
+  }
+
+  function renderStandingsLeaderboard(roster, divKey, upToDay) {
+    const container = document.getElementById("standings-leaderboard-container");
+    if (!container) return;
+
+    const divMeta = DIVISION_MAP.get(divKey) || { key: divKey, jp: "" };
+    const kkThreshold = divKey === "Makuuchi" || divKey === "Juryo" ? 8 : 4;
+    const query = state.standings.search.trim().toLowerCase();
+
+    let displayList = roster;
+    if (query) {
+      displayList = roster.filter((r) =>
+        `${r.romaji} ${r.shikonaKanji} ${r.furigana} ${r.heyaEn} ${r.rankEn}`.toLowerCase().includes(query)
+      );
+    } else if (state.standings.topN !== "all") {
+      const n = parseInt(state.standings.topN, 10) || 15;
+      if (roster.length > n) {
+        const cutoffWins = roster[n - 1].wins;
+        const cutoffLosses = roster[n - 1].losses;
+        displayList = roster.filter(
+          (r, idx) => idx < n || (r.wins === cutoffWins && r.losses === cutoffLosses)
+        );
+      }
+    }
+
+    if (roster.length === 0) {
+      container.innerHTML = `
+        <div class="standings-card" style="text-align:center; padding:2rem;">
+          <p style="font-weight:700;">No standings data available offline for ${divKey}.</p>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.3rem;">Connect to the internet or switch to Makuuchi 幕内.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const leader = roster[0];
+    const leaderCount = roster.filter((r) => r.wins === leader.wins && r.losses === leader.losses).length;
+    const cutoffLabel = query
+      ? `Search: "${state.standings.search}" (${displayList.length})`
+      : state.standings.topN === "all"
+      ? `All ${roster.length} Wrestlers`
+      : `Showing ${displayList.length} of ${roster.length} (Top ${state.standings.topN} + ties)`;
+
+    container.innerHTML = `
+      <div class="standings-card">
+        <div class="standings-header-row">
+          <h3>
+            <span class="lang-en-only">📊 ${divKey} Division Leaderboard — Day ${upToDay}</span>
+            <span class="lang-jp-only">📊 ${divMeta.jp}（${divKey}）星取ランキング・${upToDay}日目</span>
+          </h3>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+            <span class="standings-meta-pill">Leader: ${leader.wins}-${leader.losses} (${leaderCount > 1 ? `${leaderCount}-way tie` : leader.romaji})</span>
+            <span class="standings-meta-pill">${cutoffLabel}</span>
+          </div>
+        </div>
+
+        <div class="standings-table-wrap">
+          <table class="standings-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Rank</th>
+                <th>Rikishi 四股名</th>
+                <th>Record</th>
+                <th>GB</th>
+                <th>Status</th>
+                <th>Matchups</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${displayList
+                .map((r) => {
+                  const isLeader = r.wins === leader.wins && r.losses === leader.losses;
+                  const isSelected = state.standings.selectedRikishiId === r.id;
+                  const gbText =
+                    r.gamesBehind <= 0
+                      ? "Lead"
+                      : `-${Number.isInteger(r.gamesBehind) ? r.gamesBehind : r.gamesBehind.toFixed(1)}`;
+                  const recText = `${r.wins}-${r.losses}${r.absences ? `-${r.absences}` : ""}`;
+                  const sideClass = (r.side || "").toLowerCase() === "west" ? "west" : "east";
+
+                  let badgeHtml = "";
+                  if (r.isKyujo) {
+                    badgeHtml = `<span class="standings-badge kyujo">Kyūjō 休場</span>`;
+                  } else if (isLeader) {
+                    badgeHtml = `<span class="standings-badge leader">${leaderCount > 1 ? "Co-Leader 並走" : "Yūshō Leader 単独"}</span>`;
+                  } else if (r.wins >= kkThreshold) {
+                    badgeHtml = `<span class="standings-badge kk">Kachi-koshi ✓</span>`;
+                  }
+
+                  return `
+                    <tr class="standings-row ${isLeader ? "is-leader" : ""} ${isSelected ? "is-selected" : ""}">
+                      <td>
+                        <span class="standing-pos">${r.isTied ? "=" : ""}${r.standingPos}</span>
+                      </td>
+                      <td>
+                        <span class="standings-rank-tag ${sideClass}" title="${r.rankEn}">${compactRankCode(r.rankEn)}</span>
+                      </td>
+                      <td>
+                        <button type="button" class="standings-shikona-btn" data-inspect-rikishi="${r.id}" title="View Shikona Kanji &amp; Profile">
+                          ${formatShikonaDisplay(r)}
+                        </button>
+                      </td>
+                      <td>
+                        <span class="standings-record-pill">${recText}</span>
+                      </td>
+                      <td style="font-family:var(--font-mono); font-size:0.78rem; color:var(--text-muted); font-weight:700;">
+                        ${gbText}
+                      </td>
+                      <td>${badgeHtml}</td>
+                      <td>
+                        <button type="button" class="action-btn" style="padding:0.25rem 0.55rem; font-size:0.72rem;" data-select-matchup-rikishi="${r.id}">
+                          🔮 Matchups
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function computeMatchupAnalysis(target, roster, history, divKey, upToDay) {
+    const maxBouts = divKey === "Makuuchi" || divKey === "Juryo" ? 15 : 7;
+    const leaderWins = roster.length > 0 ? roster[0].wins : 0;
+
+    const foughtList = [];
+    const foughtIds = new Set();
+
+    (history.bouts || []).forEach((b) => {
+      if (b.eastId === target.id || b.westId === target.id) {
+        const oppId = b.eastId === target.id ? b.westId : b.eastId;
+        const opp = roster.find((r) => r.id === oppId) || rikishiById.get(oppId);
+        if (!opp) return;
+        foughtIds.add(oppId);
+        let result = "Pending";
+        if (b.winnerId) {
+          result = b.winnerId === target.id ? "W" : "L";
+        }
+        foughtList.push({
+          day: b.day,
+          opponent: opp,
+          result,
+          kimarite: b.kimarite || ""
+        });
+      }
+    });
+
+    foughtList.sort((a, b) => a.day - b.day);
+    const remainingBouts = Math.max(0, maxBouts - Math.max(foughtList.length, target.wins + target.losses + target.absences));
+
+    const candidates = [];
+    roster.forEach((opp) => {
+      if (opp.id === target.id) return;
+      if (foughtIds.has(opp.id)) return;
+      if (opp.isKyujo) return;
+      if (
+        target.heyaEn &&
+        opp.heyaEn &&
+        target.heyaEn !== "Grand Sumo" &&
+        target.heyaEn === opp.heyaEn
+      ) {
+        return;
+      }
+
+      const winDiff = Math.abs(target.wins - opp.wins);
+      const lossDiff = Math.abs(target.losses - opp.losses);
+      const recordDiff = winDiff + lossDiff;
+      const rankDiff = Math.abs(target.banzukeOrder - opp.banzukeOrder);
+      const bothContenders = leaderWins - target.wins <= 2 && leaderWins - opp.wins <= 2;
+
+      let score = 100 - recordDiff * 18 - Math.min(35, rankDiff * 0.15);
+      if (bothContenders) score += 12;
+
+      let tier = "possible";
+      let tierLabelEn = "Possible";
+      let tierLabelJp = "対決候補";
+      if (score >= 78) {
+        tier = "very-likely";
+        tierLabelEn = "Very Likely";
+        tierLabelJp = "有力・大";
+      } else if (score >= 56) {
+        tier = "likely";
+        tierLabelEn = "Likely";
+        tierLabelJp = "有力候補";
+      }
+
+      const reasons = [];
+      if (winDiff === 0 && lossDiff === 0) {
+        reasons.push(`Identical ${opp.wins}-${opp.losses} record`);
+      } else if (winDiff <= 1) {
+        reasons.push(`${winDiff} win apart (${opp.wins}-${opp.losses})`);
+      } else {
+        reasons.push(`${opp.wins}-${opp.losses} record`);
+      }
+      if (bothContenders) reasons.push("Yūshō race clash");
+      else if (rankDiff <= 6) reasons.push("Adjacent rank");
+
+      candidates.push({
+        opponent: opp,
+        score,
+        tier,
+        tierLabelEn,
+        tierLabelJp,
+        reason: reasons.join(" • "),
+        recordDiff,
+        rankDiff
+      });
+    });
+
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.recordDiff !== b.recordDiff) return a.recordDiff - b.recordDiff;
+      return a.rankDiff - b.rankDiff;
+    });
+
+    return {
+      maxBouts,
+      remainingBouts,
+      foughtList,
+      candidates: candidates.slice(0, 12),
+      totalEligible: candidates.length
+    };
+  }
+
+  function renderStandingsMatchups(roster, history, divKey, upToDay) {
+    const container = document.getElementById("standings-matchups-container");
+    if (!container || roster.length === 0) {
+      if (container) container.innerHTML = "";
+      return;
+    }
+
+    let selected = roster.find((r) => r.id === state.standings.selectedRikishiId);
+    if (!selected) {
+      selected = roster[0];
+      state.standings.selectedRikishiId = selected.id;
+    }
+
+    const analysis = computeMatchupAnalysis(selected, roster, history, divKey, upToDay);
+    const contenders = roster.filter((r) => !r.isKyujo).slice(0, 6);
+
+    const boutMap = new Map();
+    (history.bouts || []).forEach((b) => {
+      boutMap.set(`${b.eastId}__${b.westId}`, b);
+      boutMap.set(`${b.westId}__${b.eastId}`, b);
+    });
+
+    container.innerHTML = `
+      <div class="standings-card">
+        <div class="standings-header-row">
+          <h3>
+            <span class="lang-en-only">🔮 Final-Days Potential Matchups Inspector</span>
+            <span class="lang-jp-only">🔮 終盤戦・未対戦＆有力対戦カード予想</span>
+          </h3>
+          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <label for="matchup-rikishi-select" style="font-size:0.78rem; font-weight:700; color:var(--text-secondary);">
+              Inspect Wrestler:
+            </label>
+            <select id="matchup-rikishi-select" class="select-input" aria-label="Select wrestler for final-days matchup analysis">
+              ${roster
+                .map(
+                  (r) =>
+                    `<option value="${r.id}" ${r.id === selected.id ? "selected" : ""}>${r.romaji} (${r.shikonaKanji}) — ${r.wins}-${r.losses} • ${compactRankCode(r.rankEn)}</option>`
+                )
+                .join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="matchup-inspector-header">
+          <div>
+            <div style="font-family:var(--font-mincho); font-size:1.1rem; font-weight:800;">
+              <span class="lang-jp-only">${selected.rubyHtml || selected.shikonaKanji}（${selected.romaji}）</span>
+              <span class="lang-en-only">${selected.romaji} (${selected.shikonaKanji})</span>
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-secondary);">
+              ${selected.rankEn} • ${selected.heyaEn} Stable • Current: <strong>${selected.wins}-${selected.losses}${selected.absences ? `-${selected.absences}` : ""}</strong>
+            </div>
+          </div>
+          <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
+            <span class="standings-meta-pill">Fought: ${analysis.foughtList.length} / ${analysis.maxBouts}</span>
+            <span class="standings-meta-pill" style="background:var(--gold-bg); border-color:var(--gold-border); color:var(--gold-primary);">
+              Remaining Bouts: ${analysis.remainingBouts}
+            </span>
+          </div>
+        </div>
+
+        <div class="matchup-columns-grid">
+          <div class="matchup-col-box">
+            <div class="matchup-col-title">
+              <span>
+                <span class="lang-en-only">✓ Already Fought (Days 1–${upToDay})</span>
+                <span class="lang-jp-only">✓ 対戦済み（1〜${upToDay}日目）</span>
+              </span>
+              <span style="font-size:0.72rem; color:var(--text-muted);">${analysis.foughtList.length} bouts</span>
+            </div>
+            <div class="matchup-list">
+              ${
+                analysis.foughtList.length === 0
+                  ? `<p style="font-size:0.8rem; color:var(--text-muted);">No recorded bouts found for Days 1–${upToDay}.</p>`
+                  : analysis.foughtList
+                      .map((f) => {
+                        const resBadge =
+                          f.result === "W"
+                            ? `<span class="shiroboshi-circle" title="Win"></span>`
+                            : f.result === "L"
+                            ? `<span class="kuroboshi-circle" title="Loss"></span>`
+                            : `<span style="font-size:0.72rem; color:var(--text-muted);">Scheduled</span>`;
+                        return `
+                          <div class="matchup-item">
+                            <div class="matchup-item-left">
+                              <span style="font-family:var(--font-mono); font-size:0.72rem; font-weight:700; color:var(--text-muted);">D${f.day}</span>
+                              ${resBadge}
+                              <button type="button" class="standings-shikona-btn" data-select-matchup-rikishi="${f.opponent.id}">
+                                <span style="font-weight:700;">${f.opponent.romaji} <span style="font-weight:500; color:var(--text-muted);">(${f.opponent.shikonaKanji})</span></span>
+                              </button>
+                            </div>
+                            <div class="matchup-item-right">
+                              <span class="standings-rank-tag">${compactRankCode(f.opponent.rankEn)}</span>
+                              ${f.kimarite ? `<span style="font-size:0.7rem; color:var(--text-muted);">${f.kimarite}</span>` : ""}
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join("")
+              }
+            </div>
+          </div>
+
+          <div class="matchup-col-box">
+            <div class="matchup-col-title">
+              <span>
+                <span class="lang-en-only">🎯 Likely Final-Days Opponents (Unfought)</span>
+                <span class="lang-jp-only">🎯 終盤戦・有力な未対戦相手</span>
+              </span>
+              <span style="font-size:0.72rem; color:var(--text-muted);">${analysis.totalEligible} eligible</span>
+            </div>
+            <div class="matchup-list">
+              ${
+                analysis.candidates.length === 0
+                  ? `<p style="font-size:0.8rem; color:var(--text-muted);">No eligible unfought opponents remaining.</p>`
+                  : analysis.candidates
+                      .map((c) => {
+                        const opp = c.opponent;
+                        return `
+                          <div class="matchup-item">
+                            <div class="matchup-item-left">
+                              <span class="standings-rank-tag">${compactRankCode(opp.rankEn)}</span>
+                              <div style="min-width:0;">
+                                <button type="button" class="standings-shikona-btn" data-select-matchup-rikishi="${opp.id}">
+                                  <span style="font-weight:700;">${opp.romaji} <span style="font-weight:500; color:var(--text-muted);">(${opp.shikonaKanji})</span></span>
+                                </button>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">${c.reason} • ${opp.heyaEn}</div>
+                              </div>
+                            </div>
+                            <div class="matchup-item-right">
+                              <span class="standings-record-pill" style="font-size:0.74rem;">${opp.wins}-${opp.losses}</span>
+                              <span class="likelihood-pill ${c.tier}">
+                                <span class="lang-en-only">${c.tierLabelEn}</span>
+                                <span class="lang-jp-only">${c.tierLabelJp}</span>
+                              </span>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join("")
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="standings-card">
+        <div class="standings-header-row">
+          <h3>
+            <span class="lang-en-only">⚔️ Top ${contenders.length} Contenders Clash Matrix (Who Still Needs to Fight Whom)</span>
+            <span class="lang-jp-only">⚔️ 上位${contenders.length}名 優勝争い直接対決マトリックス</span>
+          </h3>
+          <span class="standings-meta-pill">⚔️ = Unfought potential final-days clash</span>
+        </div>
+
+        <div class="clash-matrix-wrap">
+          <table class="clash-matrix-table">
+            <thead>
+              <tr>
+                <th style="text-align:left;">Contender</th>
+                ${contenders
+                  .map(
+                    (c) =>
+                      `<th>${c.romaji}<br><span style="font-weight:500; color:var(--text-muted);">${c.wins}-${c.losses}</span></th>`
+                  )
+                  .join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${contenders
+                .map(
+                  (rowR) => `
+                  <tr>
+                    <td class="row-label">
+                      <button type="button" class="standings-shikona-btn" data-select-matchup-rikishi="${rowR.id}">
+                        <span>${rowR.romaji} <span style="font-weight:500; color:var(--text-muted);">(${rowR.wins}-${rowR.losses})</span></span>
+                      </button>
+                    </td>
+                    ${contenders
+                      .map((colR) => {
+                        if (rowR.id === colR.id) {
+                          return `<td class="clash-cell-self">—</td>`;
+                        }
+                        if (
+                          rowR.heyaEn &&
+                          colR.heyaEn &&
+                          rowR.heyaEn !== "Grand Sumo" &&
+                          rowR.heyaEn === colR.heyaEn
+                        ) {
+                          return `<td class="clash-cell-heya">Same Heya</td>`;
+                        }
+                        const bout = boutMap.get(`${rowR.id}__${colR.id}`);
+                        if (bout) {
+                          if (!bout.winnerId) {
+                            return `<td class="clash-cell-unfought">D${bout.day}</td>`;
+                          }
+                          const won = bout.winnerId === rowR.id;
+                          return `<td class="${won ? "clash-cell-win" : "clash-cell-loss"}">${won ? "○" : "●"} D${bout.day}</td>`;
+                        }
+                        return `<td class="clash-cell-unfought">⚔️ Unfought</td>`;
+                      })
+                      .join("")}
+                  </tr>
+                `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ========================================================================
      Event Delegation & Listeners
      ======================================================================== */
   function bindEvents() {
@@ -2306,6 +3070,8 @@
         });
         if (targetTab === "predictions") {
           renderPredictionsTab();
+        } else if (targetTab === "standings") {
+          renderStandingsTab();
         }
       });
     });
@@ -2313,9 +3079,11 @@
     // Basho Selector
     document.getElementById("basho-select").addEventListener("change", (e) => {
       state.selectedBashoId = e.target.value;
+      state.standings.selectedRikishiId = null;
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
       renderPredictionsTab();
+      if (state.activeTab === "standings") renderStandingsTab();
       syncWithLiveSumoApi();
     });
 
@@ -2328,8 +3096,49 @@
       generateScheduleForDay(state.selectedDay);
       renderTorikumiList();
       renderPredictionsTab();
+      if (state.activeTab === "standings") renderStandingsTab();
       syncWithLiveSumoApi();
     });
+
+    // Standings & Race Controls
+    const standingsDivPills = document.getElementById("standings-division-pills");
+    if (standingsDivPills) {
+      standingsDivPills.addEventListener("click", (e) => {
+        const pill = e.target.closest(".filter-pill");
+        if (!pill) return;
+        state.standings.division = pill.getAttribute("data-division");
+        state.standings.selectedRikishiId = null;
+        renderStandingsTab();
+      });
+    }
+
+    const standingsTopNPills = document.getElementById("standings-topn-pills");
+    if (standingsTopNPills) {
+      standingsTopNPills.addEventListener("click", (e) => {
+        const pill = e.target.closest(".filter-pill");
+        if (!pill) return;
+        state.standings.topN = pill.getAttribute("data-topn");
+        renderStandingsTab();
+      });
+    }
+
+    const standingsSearch = document.getElementById("standings-search");
+    if (standingsSearch) {
+      standingsSearch.addEventListener("input", (e) => {
+        state.standings.search = e.target.value;
+        renderStandingsTab();
+      });
+    }
+
+    const standingsMatchupsContainer = document.getElementById("standings-matchups-container");
+    if (standingsMatchupsContainer) {
+      standingsMatchupsContainer.addEventListener("change", (e) => {
+        if (e.target.id === "matchup-rikishi-select") {
+          state.standings.selectedRikishiId = e.target.value;
+          renderStandingsTab();
+        }
+      });
+    }
 
     // Bout Order Toggle (Last Match First vs. Last Match at Bottom)
     document.getElementById("bout-order-toggle-btn").addEventListener("click", () => {
@@ -2637,6 +3446,15 @@
         saveContestState();
         renderTorikumiList();
         renderPredictionsTab();
+        return;
+      }
+
+      const selectMatchupEl = e.target.closest("[data-select-matchup-rikishi]");
+      if (selectMatchupEl) {
+        state.standings.selectedRikishiId = selectMatchupEl.getAttribute("data-select-matchup-rikishi");
+        renderStandingsTab();
+        const matchupsEl = document.getElementById("standings-matchups-container");
+        if (matchupsEl) matchupsEl.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
 
